@@ -147,64 +147,6 @@ export default function Remit() {
         </p>
       </div>
 
-      {/* REMIT Legislation — full width above the grid */}
-      <div className="mb-10">
-        <h2 className="font-display text-lg mb-4 flex items-center gap-2">
-          <span className="text-accent" aria-hidden>★</span>
-          REMIT Legislation
-          {legStatus === 'loading' && (
-            <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block ml-1" />
-          )}
-        </h2>
-        {legStatus === 'error' ? (
-          <p className="text-muted text-sm">Could not load from CELLAR.</p>
-        ) : legislation.length === 0 && legStatus === 'done' ? (
-          <p className="text-muted text-sm">No results found.</p>
-        ) : (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface2 border-b border-border text-[10px] uppercase tracking-wider text-muted">
-                  <th className="text-left px-4 py-3">Title</th>
-                  <th className="text-left px-4 py-3 w-44">Type</th>
-                  <th className="text-left px-4 py-3 w-32 font-mono">Date</th>
-                  <th className="px-4 py-3 w-24 text-center">Links</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {legislation.map((leg, i) => {
-                  const pub = { id: leg.id }
-                  const typeLabel = LEG_TYPE_LABEL[leg.rawType] || leg.rawType
-                  return (
-                    <tr key={leg.id || i} className="hover:bg-primary/5 transition-colors">
-                      <td className="px-4 py-3 font-medium text-text leading-snug">{leg.title}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-[10px] font-mono uppercase tracking-wide text-accent border border-accent/30 rounded px-1.5 py-0.5">
-                          {typeLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted whitespace-nowrap">
-                        {formatDate(leg.date)}
-                      </td>
-                      <td className="px-4 py-3 text-center flex gap-3 justify-center">
-                        <a href={eurLexUrl(pub)} target="_blank" rel="noreferrer"
-                          className="text-xs text-primary hover:underline" title="Open in EUR-Lex">
-                          EUR-Lex ↗
-                        </a>
-                        <a href={opDetailUrl(pub)} target="_blank" rel="noreferrer"
-                          className="text-xs text-muted hover:text-text" title="Open in Publications Office">
-                          OP ↗
-                        </a>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       <div className="grid lg:grid-cols-3 gap-8">
         {/* KB sections — left 2/3 */}
         <div className="lg:col-span-2">
@@ -324,6 +266,64 @@ export default function Remit() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* REMIT Legislation — below knowledge base */}
+      <div className="mt-10">
+        <h2 className="font-display text-lg mb-4 flex items-center gap-2">
+          <span className="text-accent" aria-hidden>★</span>
+          REMIT Legislation
+          {legStatus === 'loading' && (
+            <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block ml-1" />
+          )}
+        </h2>
+        {legStatus === 'error' ? (
+          <p className="text-muted text-sm">Could not load from CELLAR.</p>
+        ) : legislation.length === 0 && legStatus === 'done' ? (
+          <p className="text-muted text-sm">No results found.</p>
+        ) : (
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface2 border-b border-border text-[10px] uppercase tracking-wider text-muted">
+                  <th className="text-left px-4 py-3">Title</th>
+                  <th className="text-left px-4 py-3 w-44">Type</th>
+                  <th className="text-left px-4 py-3 w-32 font-mono">Date</th>
+                  <th className="px-4 py-3 w-24 text-center">Links</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {legislation.map((leg, i) => {
+                  const pub = { id: leg.id }
+                  const typeLabel = LEG_TYPE_LABEL[leg.rawType] || leg.rawType
+                  return (
+                    <tr key={leg.id || i} className="hover:bg-primary/5 transition-colors">
+                      <td className="px-4 py-3 font-medium text-text leading-snug">{leg.title}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-mono uppercase tracking-wide text-accent border border-accent/30 rounded px-1.5 py-0.5">
+                          {typeLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted whitespace-nowrap">
+                        {formatDate(leg.date)}
+                      </td>
+                      <td className="px-4 py-3 text-center flex gap-3 justify-center">
+                        <a href={eurLexUrl(pub)} target="_blank" rel="noreferrer"
+                          className="text-xs text-primary hover:underline" title="Open in EUR-Lex">
+                          EUR-Lex ↗
+                        </a>
+                        <a href={opDetailUrl(pub)} target="_blank" rel="noreferrer"
+                          className="text-xs text-muted hover:text-text" title="Open in Publications Office">
+                          OP ↗
+                        </a>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
