@@ -5,44 +5,44 @@ import { fetchWithFallback } from '../api/openData'
 import PublicationTable from '../components/publications/PublicationTable'
 import Spinner from '../components/ui/Spinner'
 
-// ── Europe capitals (lat/lon) ─────────────────────────────────────────────────
+// ── Europe capitals (lat/lon + ENTSO-E country code) ─────────────────────────
 const CAPITALS = [
-  { name: 'Dublin',      lat: 53.3, lon:  -6.3 },
-  { name: 'Lisbon',      lat: 38.7, lon:  -9.1 },
-  { name: 'Madrid',      lat: 40.4, lon:  -3.7 },
-  { name: 'Paris',       lat: 48.9, lon:   2.3 },
-  { name: 'Brussels',    lat: 50.8, lon:   4.4 },
-  { name: 'Amsterdam',   lat: 52.4, lon:   4.9 },
-  { name: 'Luxembourg',  lat: 49.6, lon:   6.1 },
-  { name: 'Bern',        lat: 46.9, lon:   7.4 },
-  { name: 'Berlin',      lat: 52.5, lon:  13.4 },
-  { name: 'Copenhagen',  lat: 55.7, lon:  12.6 },
-  { name: 'Oslo',        lat: 59.9, lon:  10.7 },
-  { name: 'Stockholm',   lat: 59.3, lon:  18.1 },
-  { name: 'Helsinki',    lat: 60.2, lon:  25.0 },
-  { name: 'Tallinn',     lat: 59.4, lon:  24.7 },
-  { name: 'Riga',        lat: 56.9, lon:  24.1 },
-  { name: 'Vilnius',     lat: 54.7, lon:  25.3 },
-  { name: 'Warsaw',      lat: 52.2, lon:  21.0 },
-  { name: 'Prague',      lat: 50.1, lon:  14.4 },
-  { name: 'Vienna',      lat: 48.2, lon:  16.4 },
-  { name: 'Bratislava',  lat: 48.1, lon:  17.1 },
-  { name: 'Budapest',    lat: 47.5, lon:  19.0 },
-  { name: 'Ljubljana',   lat: 46.1, lon:  14.5 },
-  { name: 'Zagreb',      lat: 45.8, lon:  16.0 },
-  { name: 'Belgrade',    lat: 44.8, lon:  20.5 },
-  { name: 'Bucharest',   lat: 44.4, lon:  26.1 },
-  { name: 'Sofia',       lat: 42.7, lon:  23.3 },
-  { name: 'Skopje',      lat: 42.0, lon:  21.4 },
-  { name: 'Sarajevo',    lat: 43.9, lon:  17.7 },
-  { name: 'Podgorica',   lat: 42.4, lon:  19.3 },
-  { name: 'Tirana',      lat: 41.3, lon:  19.8 },
-  { name: 'Athens',      lat: 37.9, lon:  23.7 },
-  { name: 'Rome',        lat: 41.9, lon:  12.5 },
-  { name: 'Valletta',    lat: 35.9, lon:  14.5 },
-  { name: 'Nicosia',     lat: 35.2, lon:  33.4 },
-  { name: 'Kyiv',        lat: 50.4, lon:  30.5 },
-  { name: 'Chisinau',    lat: 47.0, lon:  28.9 },
+  { name: 'Dublin',      lat: 53.3, lon:  -6.3, country: 'IE' },
+  { name: 'Lisbon',      lat: 38.7, lon:  -9.1, country: 'PT' },
+  { name: 'Madrid',      lat: 40.4, lon:  -3.7, country: 'ES' },
+  { name: 'Paris',       lat: 48.9, lon:   2.3, country: 'FR' },
+  { name: 'Brussels',    lat: 50.8, lon:   4.4, country: 'BE' },
+  { name: 'Amsterdam',   lat: 52.4, lon:   4.9, country: 'NL' },
+  { name: 'Luxembourg',  lat: 49.6, lon:   6.1, country: 'LU' },
+  { name: 'Bern',        lat: 46.9, lon:   7.4, country: 'CH' },
+  { name: 'Berlin',      lat: 52.5, lon:  13.4, country: 'DE' },
+  { name: 'Copenhagen',  lat: 55.7, lon:  12.6, country: 'DK' },
+  { name: 'Oslo',        lat: 59.9, lon:  10.7, country: 'NO' },
+  { name: 'Stockholm',   lat: 59.3, lon:  18.1, country: 'SE' },
+  { name: 'Helsinki',    lat: 60.2, lon:  25.0, country: 'FI' },
+  { name: 'Tallinn',     lat: 59.4, lon:  24.7, country: 'EE' },
+  { name: 'Riga',        lat: 56.9, lon:  24.1, country: 'LV' },
+  { name: 'Vilnius',     lat: 54.7, lon:  25.3, country: 'LT' },
+  { name: 'Warsaw',      lat: 52.2, lon:  21.0, country: 'PL' },
+  { name: 'Prague',      lat: 50.1, lon:  14.4, country: 'CZ' },
+  { name: 'Vienna',      lat: 48.2, lon:  16.4, country: 'AT' },
+  { name: 'Bratislava',  lat: 48.1, lon:  17.1, country: 'SK' },
+  { name: 'Budapest',    lat: 47.5, lon:  19.0, country: 'HU' },
+  { name: 'Ljubljana',   lat: 46.1, lon:  14.5, country: 'SI' },
+  { name: 'Zagreb',      lat: 45.8, lon:  16.0, country: 'HR' },
+  { name: 'Belgrade',    lat: 44.8, lon:  20.5, country: 'RS' },
+  { name: 'Bucharest',   lat: 44.4, lon:  26.1, country: 'RO' },
+  { name: 'Sofia',       lat: 42.7, lon:  23.3, country: 'BG' },
+  { name: 'Skopje',      lat: 42.0, lon:  21.4, country: null },
+  { name: 'Sarajevo',    lat: 43.9, lon:  17.7, country: null },
+  { name: 'Podgorica',   lat: 42.4, lon:  19.3, country: null },
+  { name: 'Tirana',      lat: 41.3, lon:  19.8, country: null },
+  { name: 'Athens',      lat: 37.9, lon:  23.7, country: 'GR' },
+  { name: 'Rome',        lat: 41.9, lon:  12.5, country: 'IT' },
+  { name: 'Valletta',    lat: 35.9, lon:  14.5, country: null },
+  { name: 'Nicosia',     lat: 35.2, lon:  33.4, country: null },
+  { name: 'Kyiv',        lat: 50.4, lon:  30.5, country: null },
+  { name: 'Chisinau',    lat: 47.0, lon:  28.9, country: null },
 ]
 
 // Energy-type colours used for connections
@@ -66,19 +66,27 @@ function project(lat, lon, W, H) {
 }
 
 // ── Europe Energy Map Canvas (interactive) ────────────────────────────────────
-function EuropeEnergyMap() {
+function EuropeEnergyMap({ flows = null, live = false }) {
   const canvasRef    = useRef(null)
   const nodesRef     = useRef([])
   const edgesRef     = useRef([])
   const selectedRef  = useRef(-1)
-  const [panel, setPanel] = useState(null)  // { name, outgoing[], incoming[] }
+  const liveFlowsRef = useRef(flows)
+  const rebuildRef   = useRef(null)
+  const [panel, setPanel] = useState(null)  // { name, country, outgoing[], incoming[] }
+
+  // Keep liveFlowsRef in sync and rebuild graph whenever real flows arrive
+  useEffect(() => {
+    liveFlowsRef.current = flows
+    rebuildRef.current?.()
+  }, [flows])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
 
-    const DIST_THRESHOLD  = 11
+    const DIST_THRESHOLD     = 11
     const MAX_EDGES_PER_NODE = 5
 
     const buildGraph = (W, H) => {
@@ -90,35 +98,64 @@ function EuropeEnergyMap() {
         r:     Math.random() * 1.2 + 1.2,
       }))
 
-      edgesRef.current = []
-      const edgeCount = new Array(nodesRef.current.length).fill(0)
-
-      for (let i = 0; i < nodesRef.current.length; i++) {
-        const candidates = []
-        for (let j = i + 1; j < nodesRef.current.length; j++) {
-          const dLat = nodesRef.current[i].lat - nodesRef.current[j].lat
-          const dLon = nodesRef.current[i].lon - nodesRef.current[j].lon
-          const deg  = Math.sqrt(dLat * dLat + dLon * dLon)
-          if (deg < DIST_THRESHOLD) candidates.push({ j, deg })
-        }
-        candidates.sort((a, b) => a.deg - b.deg)
-
-        for (const { j } of candidates) {
-          if (edgeCount[i] >= MAX_EDGES_PER_NODE) break
-          if (edgeCount[j] >= MAX_EDGES_PER_NODE) continue
-          const colorSet = ENERGY_COLORS[edgesRef.current.length % ENERGY_COLORS.length]
+      const lf = liveFlowsRef.current
+      if (lf && lf.length > 0) {
+        // ── Real ENTSO-E data ──────────────────────────────────────────────────
+        const codeToIdx = {}
+        CAPITALS.forEach((c, i) => { if (c.country) codeToIdx[c.country] = i })
+        edgesRef.current = []
+        for (const flow of lf) {
+          const a = codeToIdx[flow.from]
+          const b = codeToIdx[flow.to]
+          if (a === undefined || b === undefined) continue
+          const exporting = flow.mw > 0
+          const srcIdx    = exporting ? a : b
+          const dstIdx    = exporting ? b : a
+          const absMw     = Math.abs(flow.mw)
+          const intensity = Math.min(absMw / 3000, 1)
           edgesRef.current.push({
-            i, j,
-            color: colorSet,
+            i: srcIdx, j: dstIdx,
+            color: ENERGY_COLORS[edgesRef.current.length % ENERGY_COLORS.length],
             dashOffset: Math.random() * 50,
-            // positive speed = flows i→j, negative = flows j→i
-            speed: (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.25 + 0.12),
-            alpha: Math.random() * 0.25 + 0.35,
+            speed: 0.08 + 0.22 * intensity,  // faster = higher MW
+            alpha: 0.25 + 0.55 * intensity,
+            mw: absMw,
           })
-          edgeCount[i]++
-          edgeCount[j]++
+        }
+      } else {
+        // ── Illustrative proximity-based graph ─────────────────────────────────
+        edgesRef.current = []
+        const edgeCount = new Array(nodesRef.current.length).fill(0)
+        for (let i = 0; i < nodesRef.current.length; i++) {
+          const candidates = []
+          for (let j = i + 1; j < nodesRef.current.length; j++) {
+            const dLat = nodesRef.current[i].lat - nodesRef.current[j].lat
+            const dLon = nodesRef.current[i].lon - nodesRef.current[j].lon
+            const deg  = Math.sqrt(dLat * dLat + dLon * dLon)
+            if (deg < DIST_THRESHOLD) candidates.push({ j, deg })
+          }
+          candidates.sort((a, b) => a.deg - b.deg)
+          for (const { j } of candidates) {
+            if (edgeCount[i] >= MAX_EDGES_PER_NODE) break
+            if (edgeCount[j] >= MAX_EDGES_PER_NODE) continue
+            edgesRef.current.push({
+              i, j,
+              color: ENERGY_COLORS[edgesRef.current.length % ENERGY_COLORS.length],
+              dashOffset: Math.random() * 50,
+              speed: (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.25 + 0.12),
+              alpha: Math.random() * 0.25 + 0.35,
+              mw: null,
+            })
+            edgeCount[i]++
+            edgeCount[j]++
+          }
         }
       }
+    }
+
+    // Expose rebuild so the flows useEffect can trigger it
+    rebuildRef.current = () => {
+      if (canvas.width && canvas.height) buildGraph(canvas.width, canvas.height)
     }
 
     const resize = () => {
@@ -174,22 +211,21 @@ function EuropeEnergyMap() {
 
       edges.forEach(edge => {
         if (edge.i === hit) {
-          // natural direction i→j
           const isOut = edge.speed > 0
-          ;(isOut ? outgoing : incoming).push(nodes[edge.j].name)
-          // spawn packets flowing OUT from selected
+          const partner = nodes[edge.j]
+          ;(isOut ? outgoing : incoming).push({ name: partner.name, mw: edge.mw })
           spawnPacket(edge, isOut)
           spawnPacket(edge, isOut)
         } else if (edge.j === hit) {
-          // natural direction i→j; if speed>0 packet goes to hit (incoming)
           const isOut = edge.speed < 0
-          ;(isOut ? outgoing : incoming).push(nodes[edge.i].name)
+          const partner = nodes[edge.i]
+          ;(isOut ? outgoing : incoming).push({ name: partner.name, mw: edge.mw })
           spawnPacket(edge, !isOut)
           spawnPacket(edge, !isOut)
         }
       })
 
-      setPanel({ name: nodes[hit].name, outgoing, incoming })
+      setPanel({ name: nodes[hit].name, country: nodes[hit].country, outgoing, incoming })
     }
 
     const handleMouseMove = (e) => {
@@ -341,12 +377,15 @@ function EuropeEnergyMap() {
           {panel.outgoing.length > 0 && (
             <div className="mb-2">
               <div className="text-[9px] font-mono uppercase tracking-widest text-cyan-400 mb-1.5">
-                ↗ Outgoing ({panel.outgoing.length})
+                ↗ Exporting to ({panel.outgoing.length})
               </div>
-              {panel.outgoing.map(n => (
-                <div key={n} className="flex items-center gap-1.5 text-xs text-white/70 mb-1">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                  {n}
+              {panel.outgoing.map(e => (
+                <div key={e.name} className="flex items-center justify-between gap-2 text-xs text-white/70 mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                    {e.name}
+                  </span>
+                  {e.mw && <span className="font-mono text-cyan-300 text-[10px]">{Math.round(e.mw).toLocaleString()} MW</span>}
                 </div>
               ))}
             </div>
@@ -355,19 +394,25 @@ function EuropeEnergyMap() {
           {panel.incoming.length > 0 && (
             <div>
               <div className="text-[9px] font-mono uppercase tracking-widest text-amber-400 mb-1.5">
-                ↙ Incoming ({panel.incoming.length})
+                ↙ Importing from ({panel.incoming.length})
               </div>
-              {panel.incoming.map(n => (
-                <div key={n} className="flex items-center gap-1.5 text-xs text-white/70 mb-1">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                  {n}
+              {panel.incoming.map(e => (
+                <div key={e.name} className="flex items-center justify-between gap-2 text-xs text-white/70 mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    {e.name}
+                  </span>
+                  {e.mw && <span className="font-mono text-amber-300 text-[10px]">{Math.round(e.mw).toLocaleString()} MW</span>}
                 </div>
               ))}
             </div>
           )}
 
-          <div className="mt-3 pt-3 border-t border-white/10 text-[9px] text-white/25 font-mono">
-            Illustrative flows · not real infrastructure data
+          <div className="mt-3 pt-3 border-t border-white/10 text-[9px] font-mono flex items-center gap-1.5">
+            {live
+              ? <><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-emerald-400">Live · ENTSO-E Transparency Platform</span></>
+              : <span className="text-white/25">Illustrative flows · add ENTSOE_TOKEN for live data</span>
+            }
           </div>
         </div>
       )}
@@ -427,12 +472,20 @@ function useLatestPublications() {
 export default function Home() {
   useDocumentTitle('EU Energy Publications')
   const { results, status } = useLatestPublications()
+  const [flowData, setFlowData] = useState({ flows: null, live: false })
+
+  useEffect(() => {
+    fetch('/api/energy-flows')
+      .then(r => r.json())
+      .then(d => setFlowData(d))
+      .catch(() => {})  // fail silently, map falls back to illustrative
+  }, [])
 
   return (
     <div>
       {/* ── Hero ── */}
       <section className="relative overflow-hidden" style={{ minHeight: '92vh', background: 'linear-gradient(160deg,#04060f 0%,#060c1a 50%,#050810 100%)' }}>
-        <EuropeEnergyMap />
+        <EuropeEnergyMap flows={flowData.flows} live={flowData.live} />
 
         {/* subtle edge vignette — keep map visible */}
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 50%, rgba(4,6,15,0.4) 100%)' }} aria-hidden />
@@ -460,8 +513,14 @@ export default function Home() {
         </div>
 
         {/* Legend — bottom center */}
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10">
+        <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2 z-10">
           <FadeIn delay={600}>
+            {flowData.live && (
+              <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400 mb-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                LIVE · ENTSO-E cross-border flows
+              </div>
+            )}
             <div className="flex flex-wrap justify-center gap-4 text-[10px] text-white/35 font-mono uppercase tracking-wider">
               {[['#3b82f6','Electricity'],['#06b6d4','Offshore wind'],['#10b981','Renewables'],['#f59e0b','Gas'],['#8b5cf6','Nuclear'],['#ef4444','Oil']].map(([c,l]) => (
                 <span key={l} className="flex items-center gap-1.5">
