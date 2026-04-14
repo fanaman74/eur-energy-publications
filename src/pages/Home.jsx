@@ -297,19 +297,53 @@ export default function Home() {
       <section className="relative overflow-hidden" style={{ minHeight: '92vh', background: 'linear-gradient(160deg,#04060f 0%,#060c1a 50%,#050810 100%)' }}>
         <EuropeEnergyMap />
 
-        {/* very subtle edge fade only — keep map visible */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, rgba(4,6,15,0.45) 100%)' }} aria-hidden />
+        {/* subtle edge vignette — keep map visible */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 50%, rgba(4,6,15,0.4) 100%)' }} aria-hidden />
         <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent, #050810)' }} aria-hidden />
 
-        {/* Minimal text — bottom-left, small and subtle */}
-        <div className="absolute bottom-10 left-8 z-10">
-          <FadeIn delay={400}>
-            <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(1.4rem, 3vw, 2.4rem)', opacity: 0.72 }}>
-              <span className="block text-white">EU ENERGY</span>
-              <span className="block" style={{ color: '#3b82f6' }}>DECODED.</span>
+        {/* Centered title */}
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <FadeIn delay={300} className="text-center">
+            <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', opacity: 0.85 }}>
+              <span className="block text-white mb-1">EU ENERGY</span>
+              <span
+                className="block"
+                style={{
+                  background: 'linear-gradient(90deg, #3b82f6, #06b6d4, #8b5cf6, #3b82f6)',
+                  backgroundSize: '300% 100%',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  animation: 'gradientShift 4s ease infinite',
+                }}
+              >
+                DECODED.
+              </span>
             </h1>
           </FadeIn>
         </div>
+
+        {/* Legend — bottom center */}
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10">
+          <FadeIn delay={600}>
+            <div className="flex flex-wrap justify-center gap-4 text-[10px] text-white/35 font-mono uppercase tracking-wider">
+              {[['#3b82f6','Electricity'],['#06b6d4','Offshore wind'],['#10b981','Renewables'],['#f59e0b','Gas'],['#8b5cf6','Nuclear'],['#ef4444','Oil']].map(([c,l]) => (
+                <span key={l} className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-px rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} />
+                  {l}
+                </span>
+              ))}
+            </div>
+          </FadeIn>
+        </div>
+
+        <style>{`
+          @keyframes gradientShift {
+            0%   { background-position: 0% 50% }
+            50%  { background-position: 100% 50% }
+            100% { background-position: 0% 50% }
+          }
+        `}</style>
       </section>
 
       {/* ── Quick nav cards — 4 per row ── */}
