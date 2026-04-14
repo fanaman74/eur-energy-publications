@@ -301,8 +301,8 @@ export default function Home() {
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 50%, rgba(4,6,15,0.4) 100%)' }} aria-hidden />
         <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent, #050810)' }} aria-hidden />
 
-        {/* Centered title */}
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+        {/* Title — top center */}
+        <div className="absolute top-8 left-0 right-0 flex justify-center z-10 pointer-events-none">
           <FadeIn delay={300} className="text-center">
             <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', opacity: 0.85 }}>
               <span className="block text-white mb-1">EU ENERGY</span>
