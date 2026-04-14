@@ -304,10 +304,9 @@ export default function Home() {
         {/* Title — top center */}
         <div className="absolute top-8 left-0 right-0 flex justify-center z-10 pointer-events-none">
           <FadeIn delay={300} className="text-center">
-            <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', opacity: 0.85 }}>
-              <span className="block text-white mb-1">EU ENERGY</span>
+            <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(1.6rem, 3.5vw, 3rem)', opacity: 0.85 }}>
+              <span className="text-white">EU ENERGY </span>
               <span
-                className="block"
                 style={{
                   background: 'linear-gradient(90deg, #3b82f6, #06b6d4, #8b5cf6, #3b82f6)',
                   backgroundSize: '300% 100%',
