@@ -193,30 +193,6 @@ export default function Remit() {
             ))}
           </div>
 
-          {/* Quick links */}
-          <div className="mt-8 rounded-xl border border-border bg-surface/50 p-5">
-            <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Key REMIT Links</div>
-            <div className="grid sm:grid-cols-2 gap-2">
-              {[
-                ['About REMIT', 'https://www.acer.europa.eu/remit/about-remit'],
-                ['Data Collection', 'https://www.acer.europa.eu/remit/data-collection'],
-                ['Market Surveillance', 'https://www.acer.europa.eu/remit/market-surveillance'],
-                ['REMIT for You', 'https://www.acer.europa.eu/remit/remit-for-you'],
-                ['Coordination on Cases', 'https://www.acer.europa.eu/remit/coordination-on-cases'],
-                ['Cooperation', 'https://www.acer.europa.eu/remit/cooperation'],
-              ].map(([label, href]) => (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-muted hover:text-primary transition-colors flex items-center gap-1.5"
-                >
-                  <span className="text-border">›</span> {label}
-                </a>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* ACER news feed — right 1/3 */}
@@ -324,6 +300,31 @@ export default function Remit() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Key REMIT Links — bottom */}
+      <div className="mt-8 rounded-xl border border-border bg-surface/50 p-5">
+        <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Key REMIT Links</div>
+        <div className="grid sm:grid-cols-3 gap-2">
+          {[
+            ['About REMIT', 'https://www.acer.europa.eu/remit/about-remit'],
+            ['Data Collection', 'https://www.acer.europa.eu/remit/data-collection'],
+            ['Market Surveillance', 'https://www.acer.europa.eu/remit/market-surveillance'],
+            ['REMIT for You', 'https://www.acer.europa.eu/remit/remit-for-you'],
+            ['Coordination on Cases', 'https://www.acer.europa.eu/remit/coordination-on-cases'],
+            ['Cooperation', 'https://www.acer.europa.eu/remit/cooperation'],
+          ].map(([label, href]) => (
+            <a
+              key={label}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-muted hover:text-primary transition-colors flex items-center gap-1.5"
+            >
+              <span className="text-border">›</span> {label}
+            </a>
+          ))}
+        </div>
       </div>
     </div>
   )
