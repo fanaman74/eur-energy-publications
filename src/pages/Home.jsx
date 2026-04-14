@@ -65,25 +65,24 @@ function project(lat, lon, W, H) {
   return { x, y }
 }
 
-// ── Europe Energy Map Canvas ──────────────────────────────────────────────────
+// ── Europe Energy Map Canvas (interactive) ────────────────────────────────────
 function EuropeEnergyMap() {
-  const canvasRef = useRef(null)
+  const canvasRef    = useRef(null)
+  const nodesRef     = useRef([])
+  const edgesRef     = useRef([])
+  const selectedRef  = useRef(-1)
+  const [panel, setPanel] = useState(null)  // { name, outgoing[], incoming[] }
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
 
-    // Node state (projected positions + render data)
-    let nodes = []
-    // Edge state
-    let edges = []
-
-    const DIST_THRESHOLD = 11   // degrees — connect geographic neighbours
+    const DIST_THRESHOLD  = 11
     const MAX_EDGES_PER_NODE = 5
 
     const buildGraph = (W, H) => {
-      nodes = CAPITALS.map(c => ({
+      nodesRef.current = CAPITALS.map(c => ({
         ...c,
         ...project(c.lat, c.lon, W, H),
         phase: Math.random() * Math.PI * 2,
@@ -91,15 +90,14 @@ function EuropeEnergyMap() {
         r:     Math.random() * 1.2 + 1.2,
       }))
 
-      edges = []
-      const edgeCount = new Array(nodes.length).fill(0)
+      edgesRef.current = []
+      const edgeCount = new Array(nodesRef.current.length).fill(0)
 
-      for (let i = 0; i < nodes.length; i++) {
-        // Find all candidates sorted by distance
+      for (let i = 0; i < nodesRef.current.length; i++) {
         const candidates = []
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dLat = nodes[i].lat - nodes[j].lat
-          const dLon = nodes[i].lon - nodes[j].lon
+        for (let j = i + 1; j < nodesRef.current.length; j++) {
+          const dLat = nodesRef.current[i].lat - nodesRef.current[j].lat
+          const dLon = nodesRef.current[i].lon - nodesRef.current[j].lon
           const deg  = Math.sqrt(dLat * dLat + dLon * dLon)
           if (deg < DIST_THRESHOLD) candidates.push({ j, deg })
         }
@@ -108,11 +106,12 @@ function EuropeEnergyMap() {
         for (const { j } of candidates) {
           if (edgeCount[i] >= MAX_EDGES_PER_NODE) break
           if (edgeCount[j] >= MAX_EDGES_PER_NODE) continue
-          const colorSet = ENERGY_COLORS[edges.length % ENERGY_COLORS.length]
-          edges.push({
+          const colorSet = ENERGY_COLORS[edgesRef.current.length % ENERGY_COLORS.length]
+          edgesRef.current.push({
             i, j,
             color: colorSet,
             dashOffset: Math.random() * 50,
+            // positive speed = flows i→j, negative = flows j→i
             speed: (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.25 + 0.12),
             alpha: Math.random() * 0.25 + 0.35,
           })
@@ -136,80 +135,161 @@ function EuropeEnergyMap() {
     const MAX_PKTS = 14
     let tick = 0
 
-    const spawnPacket = () => {
+    const spawnPacket = (edgeOverride = null, forceForward = null) => {
+      const edges = edgesRef.current
       if (!edges.length) return
-      const edge = edges[Math.floor(Math.random() * edges.length)]
-      const forward = Math.random() > 0.5
-      packets.push({ edge, t: forward ? 0 : 1, speed: (forward ? 1 : -1) * (Math.random() * 0.006 + 0.003) })
+      const edge = edgeOverride || edges[Math.floor(Math.random() * edges.length)]
+      const forward = forceForward !== null ? forceForward : (Math.random() > 0.5)
+      packets.push({ edge, t: forward ? 0 : 1, speed: (forward ? 1 : -1) * (Math.random() * 0.007 + 0.004) })
     }
+
+    // Hit test — returns index or -1
+    const hitTest = (cx, cy) => {
+      const nodes = nodesRef.current
+      for (let i = 0; i < nodes.length; i++) {
+        const dx = nodes[i].x - cx, dy = nodes[i].y - cy
+        if (Math.sqrt(dx * dx + dy * dy) < 18) return i
+      }
+      return -1
+    }
+
+    const handleClick = (e) => {
+      const rect  = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const cx = (e.clientX - rect.left) * scaleX
+      const cy = (e.clientY - rect.top)  * scaleY
+      const hit = hitTest(cx, cy)
+
+      if (hit < 0 || hit === selectedRef.current) {
+        selectedRef.current = -1
+        setPanel(null)
+        return
+      }
+
+      selectedRef.current = hit
+      const nodes = nodesRef.current
+      const edges = edgesRef.current
+      const outgoing = [], incoming = []
+
+      edges.forEach(edge => {
+        if (edge.i === hit) {
+          // natural direction i→j
+          const isOut = edge.speed > 0
+          ;(isOut ? outgoing : incoming).push(nodes[edge.j].name)
+          // spawn packets flowing OUT from selected
+          spawnPacket(edge, isOut)
+          spawnPacket(edge, isOut)
+        } else if (edge.j === hit) {
+          // natural direction i→j; if speed>0 packet goes to hit (incoming)
+          const isOut = edge.speed < 0
+          ;(isOut ? outgoing : incoming).push(nodes[edge.i].name)
+          spawnPacket(edge, !isOut)
+          spawnPacket(edge, !isOut)
+        }
+      })
+
+      setPanel({ name: nodes[hit].name, outgoing, incoming })
+    }
+
+    const handleMouseMove = (e) => {
+      const rect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const cx = (e.clientX - rect.left) * scaleX
+      const cy = (e.clientY - rect.top)  * scaleY
+      canvas.style.cursor = hitTest(cx, cy) >= 0 ? 'pointer' : 'default'
+    }
+
+    canvas.addEventListener('click', handleClick)
+    canvas.addEventListener('mousemove', handleMouseMove)
 
     let animId
     const draw = () => {
       tick++
       ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const nodes  = nodesRef.current
+      const edges  = edgesRef.current
+      const sel    = selectedRef.current
+      const hasSel = sel >= 0
 
-      // Animate node phases
       nodes.forEach(n => { n.phase += n.speed })
-
-      // Spawn packets
       if (tick % 45 === 0 && packets.length < MAX_PKTS) spawnPacket()
 
-      // Draw edges — flowing dashed lines
-      edges.forEach(e => {
+      // Build connected-edge + connected-node sets
+      const connEdges = new Set()
+      const connNodes = new Set()
+      const outEdges  = new Set()   // edges where sel is the source
+      if (hasSel) {
+        edges.forEach((e, idx) => {
+          if (e.i === sel || e.j === sel) {
+            connEdges.add(idx)
+            connNodes.add(e.i === sel ? e.j : e.i)
+            if ((e.i === sel && e.speed > 0) || (e.j === sel && e.speed < 0)) outEdges.add(idx)
+          }
+        })
+      }
+
+      // Draw edges
+      edges.forEach((e, idx) => {
         e.dashOffset += e.speed
         const a = nodes[e.i], b = nodes[e.j]
-        const [r, g, bl] = e.color
+        const isConn   = connEdges.has(idx)
+        const isOut    = outEdges.has(idx)
+        const dimmed   = hasSel && !isConn
 
-        // Faint base line
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
-        ctx.strokeStyle = `rgba(${r},${g},${bl},0.08)`
-        ctx.lineWidth = 1
-        ctx.setLineDash([])
-        ctx.stroke()
+        let [r, g, bl] = e.color
+        let baseAlpha = 0.08, dashAlpha = e.alpha, lw = 1.2
 
-        // Flowing dashes
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
-        ctx.strokeStyle = `rgba(${r},${g},${bl},${e.alpha})`
-        ctx.lineWidth = 1.2
-        ctx.setLineDash([6, 14])
-        ctx.lineDashOffset = -e.dashOffset
-        ctx.stroke()
+        if (dimmed) { baseAlpha = 0.02; dashAlpha = 0.06; lw = 0.8 }
+        if (isConn) {
+          // outgoing = cyan, incoming = amber
+          ;[r, g, bl] = isOut ? [6, 182, 212] : [245, 158, 11]
+          baseAlpha = 0.18; dashAlpha = 0.9; lw = 2
+        }
+
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y)
+        ctx.strokeStyle = `rgba(${r},${g},${bl},${baseAlpha})`
+        ctx.lineWidth = lw; ctx.setLineDash([]); ctx.stroke()
+
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y)
+        ctx.strokeStyle = `rgba(${r},${g},${bl},${dashAlpha})`
+        ctx.lineWidth = lw; ctx.setLineDash([6, 14])
+        ctx.lineDashOffset = -e.dashOffset; ctx.stroke()
         ctx.setLineDash([])
       })
 
       // Draw nodes
-      nodes.forEach(n => {
-        const pulse = 0.5 + 0.5 * Math.sin(n.phase)
+      nodes.forEach((n, idx) => {
+        const pulse   = 0.5 + 0.5 * Math.sin(n.phase)
+        const isSel   = idx === sel
+        const isConn  = connNodes.has(idx)
+        const dimmed  = hasSel && !isSel && !isConn
+        const glowR   = isSel ? 28 : isConn ? 20 : 14
+        const glowA   = isSel ? 0.7 : isConn ? 0.45 : (dimmed ? 0.06 : 0.3)
+        const [cr, cg, cb] = isSel ? [99, 210, 255] : isConn ? [255, 200, 80] : [99, 210, 255]
+        const coreA   = dimmed ? 0.2 : (0.6 + 0.4 * pulse)
 
-        // outer glow
-        const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 14)
-        glow.addColorStop(0, `rgba(99,210,255,${0.3 * pulse})`)
-        glow.addColorStop(1, `rgba(99,210,255,0)`)
-        ctx.beginPath()
-        ctx.arc(n.x, n.y, 14, 0, Math.PI * 2)
-        ctx.fillStyle = glow
-        ctx.fill()
+        const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR)
+        glow.addColorStop(0, `rgba(${cr},${cg},${cb},${glowA * pulse})`)
+        glow.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+        ctx.beginPath(); ctx.arc(n.x, n.y, glowR, 0, Math.PI * 2)
+        ctx.fillStyle = glow; ctx.fill()
 
-        // core dot
-        ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r + pulse * 0.6, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(180,230,255,${0.6 + 0.4 * pulse})`
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(n.x, n.y, isSel ? 4 : n.r + pulse * 0.6, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(${cr},${cg},${cb},${coreA})`; ctx.fill()
 
-        // label (only on larger displays — skip if canvas is narrow)
         if (canvas.width > 700) {
-          ctx.fillStyle = `rgba(180,220,255,${0.45 + 0.2 * pulse})`
-          ctx.font = '9px monospace'
+          ctx.fillStyle = dimmed
+            ? `rgba(180,220,255,0.12)`
+            : isSel ? `rgba(255,255,255,0.95)` : `rgba(180,220,255,${0.45 + 0.2 * pulse})`
+          ctx.font = isSel ? 'bold 10px monospace' : '9px monospace'
           ctx.textAlign = 'center'
-          ctx.fillText(n.name, n.x, n.y - 9)
+          ctx.fillText(n.name, n.x, n.y - (isSel ? 12 : 9))
         }
       })
 
-      // Draw packets — bright travelling dots
+      // Draw packets
       for (let k = packets.length - 1; k >= 0; k--) {
         const p = packets[k]
         p.t += p.speed
@@ -217,25 +297,82 @@ function EuropeEnergyMap() {
         const a = nodes[p.edge.i], b = nodes[p.edge.j]
         const px = a.x + (b.x - a.x) * p.t
         const py = a.y + (b.y - a.y) * p.t
-        const [r, g, bl] = p.edge.color
-        const pg = ctx.createRadialGradient(px, py, 0, px, py, 7)
+        const isHighlight = connEdges.has(edgesRef.current.indexOf(p.edge))
+        const [r, g, bl] = isHighlight ? (outEdges.has(edgesRef.current.indexOf(p.edge)) ? [6,182,212] : [245,158,11]) : p.edge.color
+        const size = isHighlight ? 9 : 7
+        const pg = ctx.createRadialGradient(px, py, 0, px, py, size)
         pg.addColorStop(0, `rgba(255,255,255,1)`)
-        pg.addColorStop(0.3, `rgba(${r},${g},${bl},0.8)`)
+        pg.addColorStop(0.3, `rgba(${r},${g},${bl},0.85)`)
         pg.addColorStop(1, `rgba(${r},${g},${bl},0)`)
-        ctx.beginPath()
-        ctx.arc(px, py, 7, 0, Math.PI * 2)
-        ctx.fillStyle = pg
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(px, py, size, 0, Math.PI * 2)
+        ctx.fillStyle = pg; ctx.fill()
       }
 
       animId = requestAnimationFrame(draw)
     }
     draw()
 
-    return () => { cancelAnimationFrame(animId); ro.disconnect() }
+    return () => {
+      cancelAnimationFrame(animId)
+      ro.disconnect()
+      canvas.removeEventListener('click', handleClick)
+      canvas.removeEventListener('mousemove', handleMouseMove)
+    }
   }, [])
 
-  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" aria-hidden />
+  return (
+    <div className="absolute inset-0">
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Info panel */}
+      {panel && (
+        <div
+          className="absolute bottom-20 right-6 z-20 rounded-xl border border-white/15 backdrop-blur-md p-4 text-left"
+          style={{ background: 'rgba(4,6,15,0.82)', minWidth: 200, maxWidth: 260 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-display font-bold text-white text-sm">{panel.name}</span>
+            <button
+              onClick={() => { selectedRef.current = -1; setPanel(null) }}
+              className="text-white/40 hover:text-white text-lg leading-none"
+            >×</button>
+          </div>
+
+          {panel.outgoing.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[9px] font-mono uppercase tracking-widest text-cyan-400 mb-1.5">
+                ↗ Outgoing ({panel.outgoing.length})
+              </div>
+              {panel.outgoing.map(n => (
+                <div key={n} className="flex items-center gap-1.5 text-xs text-white/70 mb-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {panel.incoming.length > 0 && (
+            <div>
+              <div className="text-[9px] font-mono uppercase tracking-widest text-amber-400 mb-1.5">
+                ↙ Incoming ({panel.incoming.length})
+              </div>
+              {panel.incoming.map(n => (
+                <div key={n} className="flex items-center gap-1.5 text-xs text-white/70 mb-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-3 pt-3 border-t border-white/10 text-[9px] text-white/25 font-mono">
+            Illustrative flows · not real infrastructure data
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Animated counter ──────────────────────────────────────────────────────────
