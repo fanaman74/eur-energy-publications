@@ -18,7 +18,6 @@ export default function Header() {
         <nav className="flex items-center gap-1">
           <NavLink to="/" end className={link}>Home</NavLink>
           <NavLink to="/browse" className={link}>Browse</NavLink>
-          <NavLink to="/documents" className={link}>Documents</NavLink>
           <NavLink to="/remit" className={link}>REMIT</NavLink>
           <NavLink to="/eur-lex" className={link}>EUR-Lex</NavLink>
           <NavLink to="/about" className={link}>About</NavLink>

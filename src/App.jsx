@@ -7,7 +7,6 @@ import Home from './pages/Home'
 import Browse from './pages/Browse'
 import Detail from './pages/Detail'
 import About from './pages/About'
-import Documents from './pages/Documents'
 import Remit from './pages/Remit'
 import EurLex from './pages/EurLex'
 import LegislationDetail from './pages/LegislationDetail'
@@ -24,7 +23,6 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/browse" element={<Browse />} />
                 <Route path="/publication/:id" element={<Detail />} />
-                <Route path="/documents" element={<Documents />} />
                 <Route path="/remit" element={<Remit />} />
                 <Route path="/eur-lex" element={<EurLex />} />
                 <Route path="/eur-lex/:workId" element={<LegislationDetail />} />
