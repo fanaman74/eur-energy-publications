@@ -287,13 +287,6 @@ function useLatestPublications() {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-const STATS = [
-  { value: 40000, suffix: '+', label: 'Publications indexed' },
-  { value: 27,    suffix: '',  label: 'EU member states' },
-  { value: 3,     suffix: '',  label: 'Data sources' },
-  { value: 11,    suffix: '',  label: 'Legislative types' },
-]
-
 export default function Home() {
   useDocumentTitle('EU Energy Publications')
   const { results, status } = useLatestPublications()
@@ -304,72 +297,17 @@ export default function Home() {
       <section className="relative overflow-hidden" style={{ minHeight: '92vh', background: 'linear-gradient(160deg,#04060f 0%,#060c1a 50%,#050810 100%)' }}>
         <EuropeEnergyMap />
 
-        {/* vignette overlays */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 20%, rgba(4,6,15,0.65) 100%)' }} aria-hidden />
-        <div className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent, #050810)' }} aria-hidden />
+        {/* very subtle edge fade only — keep map visible */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, rgba(4,6,15,0.45) 100%)' }} aria-hidden />
+        <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent, #050810)' }} aria-hidden />
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6" style={{ minHeight: '92vh' }}>
-          <FadeIn delay={100}>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 text-xs text-white/50 mb-8 bg-white/5 backdrop-blur-sm">
-              <span className="text-primary" aria-hidden>★</span>
-              CELLAR SPARQL · Publications Office · EUR-Lex
-            </div>
-          </FadeIn>
-
-          <FadeIn delay={250}>
-            <h1 className="font-display font-bold tracking-tight leading-none mb-6" style={{ fontSize: 'clamp(3rem, 9vw, 8rem)' }}>
+        {/* Minimal text — bottom-left, small and subtle */}
+        <div className="absolute bottom-10 left-8 z-10">
+          <FadeIn delay={400}>
+            <h1 className="font-display font-bold tracking-tight leading-none" style={{ fontSize: 'clamp(1.4rem, 3vw, 2.4rem)', opacity: 0.72 }}>
               <span className="block text-white">EU ENERGY</span>
-              <span className="block" style={{ color: '#3b82f6', textShadow: '0 0 60px rgba(59,130,246,0.5)' }}>DECODED.</span>
+              <span className="block" style={{ color: '#3b82f6' }}>DECODED.</span>
             </h1>
-          </FadeIn>
-
-          <FadeIn delay={420}>
-            <p className="text-white/50 text-lg max-w-xl mx-auto mb-10 leading-relaxed">
-              Search every DG&nbsp;ENER regulation, directive, and publication straight from the CELLAR repository. No friction, no institutional navigation.
-            </p>
-          </FadeIn>
-
-          <FadeIn delay={560}>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <Link
-                to="/browse"
-                className="px-7 py-3.5 rounded-lg font-semibold text-white transition-all"
-                style={{ background: '#3b82f6', boxShadow: '0 0 30px rgba(59,130,246,0.4)' }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 50px rgba(59,130,246,0.7)' }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 30px rgba(59,130,246,0.4)' }}
-              >
-                Browse Publications →
-              </Link>
-              <Link to="/eur-lex" className="px-7 py-3.5 rounded-lg font-medium text-white/70 border border-white/15 hover:border-white/30 hover:text-white transition-all">
-                EUR-Lex Legislation
-              </Link>
-            </div>
-          </FadeIn>
-
-          <FadeIn delay={750} className="w-full max-w-3xl mt-20">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-white/5 rounded-2xl overflow-hidden border border-white/8">
-              {STATS.map(({ value, suffix, label }) => (
-                <div key={label} className="px-6 py-6 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <div className="font-display font-bold text-white mb-1" style={{ fontSize: '2rem', textShadow: '0 0 20px rgba(59,130,246,0.4)' }}>
-                    <Counter target={value} suffix={suffix} />
-                  </div>
-                  <div className="text-xs text-white/40 uppercase tracking-wider">{label}</div>
-                </div>
-              ))}
-            </div>
-          </FadeIn>
-
-          {/* Connection legend */}
-          <FadeIn delay={900} className="mt-6">
-            <div className="flex flex-wrap justify-center gap-4 text-[10px] text-white/30 font-mono uppercase tracking-wider">
-              {[['#3b82f6','Electricity'],['#06b6d4','Offshore wind'],['#10b981','Renewables'],['#f59e0b','Gas'],['#8b5cf6','Nuclear'],['#ef4444','Oil']].map(([c,l]) => (
-                <span key={l} className="flex items-center gap-1.5">
-                  <span className="inline-block w-3 h-0.5 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
-                  {l}
-                </span>
-              ))}
-            </div>
           </FadeIn>
         </div>
       </section>
