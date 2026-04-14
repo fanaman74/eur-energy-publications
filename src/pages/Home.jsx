@@ -410,8 +410,8 @@ function EuropeEnergyMap({ flows = null, live = false }) {
 
           <div className="mt-3 pt-3 border-t border-white/10 text-[9px] font-mono flex items-center gap-1.5">
             {live
-              ? <><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-emerald-400">Live · ENTSO-E Transparency Platform</span></>
-              : <span className="text-white/25">Illustrative flows · add ENTSOE_TOKEN for live data</span>
+              ? <><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-emerald-400">Live · energy-charts.info (Fraunhofer ISE)</span></>
+              : <span className="text-white/25">Illustrative flows · not real infrastructure data</span>
             }
           </div>
         </div>
@@ -518,7 +518,7 @@ export default function Home() {
             {flowData.live && (
               <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400 mb-1">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                LIVE · ENTSO-E cross-border flows
+                LIVE · Real cross-border flows (energy-charts.info)
               </div>
             )}
             <div className="flex flex-wrap justify-center gap-4 text-[10px] text-white/35 font-mono uppercase tracking-wider">

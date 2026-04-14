@@ -68,62 +68,23 @@ Issuing body: ${agents?.join(', ') || 'European Commission'}`,
   }
 })
 
-// ── ENTSO-E cross-border electricity flows ────────────────────────────────────
-const COUNTRY_EIC = {
-  AT: '10YAT-APG------L', BE: '10YBE----------2', BG: '10YCA-BULGARIA-R',
-  CH: '10YCH-SWISSGRIDZ', CZ: '10YCZ-CEPS-----N', DE: '10Y1001A1001A83F',
-  DK: '10Y1001A1001A65H', EE: '10Y1001A1001A39I', ES: '10YES-REE------0',
-  FI: '10YFI-1--------U',  FR: '10YFR-RTE------C', GB: '10YGB----------A',
-  GR: '10YGR-HTSO-----Y',  HR: '10YHR-HEP------M', HU: '10YHU-MAVIR----U',
-  IT: '10YIT-GRTN-----B',  LT: '10YLT-1001A0008Q', LU: '10YLU-CEGEDEL-NQ',
-  LV: '10YLV-1001A00074',  NL: '10YNL----------L', NO: '10YNO-0--------C',
-  PL: '10YPL-AREA-----S',  PT: '10YPT-REN------W', RO: '10YRO-TEL------P',
-  RS: '10YCS-SERBIATSOV',  SE: '10YSE-1--------K', SI: '10YSI-ELES-----O',
-  SK: '10YSK-SEPS-----K',
+// ── Cross-border electricity flows — Energy-Charts API (Fraunhofer ISE, free) ──
+// Docs: https://api.energy-charts.info/ — no registration, 15-min resolution, GW
+const ECHARTS_NAME_TO_CODE = {
+  'Austria': 'AT', 'Belgium': 'BE', 'Bulgaria': 'BG', 'Croatia': 'HR',
+  'Czech Republic': 'CZ', 'Czechia': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
+  'Finland': 'FI', 'France': 'FR', 'Germany': 'DE', 'Great Britain': 'GB',
+  'Greece': 'GR', 'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT',
+  'Latvia': 'LV', 'Lithuania': 'LT', 'Luxembourg': 'LU', 'Netherlands': 'NL',
+  'Norway': 'NO', 'Poland': 'PL', 'Portugal': 'PT', 'Romania': 'RO',
+  'Serbia': 'RS', 'Slovakia': 'SK', 'Slovenia': 'SI', 'Spain': 'ES',
+  'Sweden': 'SE', 'Switzerland': 'CH',
 }
 
-// Key European cross-border electricity interconnections
-const FLOW_PAIRS = [
-  ['DE','FR'], ['DE','NL'], ['DE','BE'], ['DE','AT'], ['DE','CH'],
-  ['DE','CZ'], ['DE','PL'], ['DE','DK'],
-  ['FR','ES'], ['FR','BE'], ['FR','IT'], ['FR','CH'], ['FR','GB'],
-  ['ES','PT'], ['IT','AT'], ['IT','SI'], ['IT','GR'], ['IT','CH'],
-  ['CH','AT'], ['AT','HU'], ['AT','SI'], ['AT','CZ'],
-  ['HU','SK'], ['HU','RO'], ['HU','HR'], ['HU','RS'],
-  ['CZ','SK'], ['PL','CZ'], ['PL','SK'], ['PL','LT'],
-  ['SE','NO'], ['SE','FI'], ['SE','DK'], ['SE','LV'],
-  ['FI','EE'], ['EE','LV'], ['LV','LT'], ['LT','PL'],
-  ['NO','DK'], ['BE','NL'], ['BE','LU'], ['RO','BG'], ['BG','GR'],
-  ['SI','HR'], ['HR','RS'],
-]
+// Hub countries — querying each returns all its neighbors
+const HUB_COUNTRIES = ['de','fr','it','es','pl','se','no','at','be','nl','cz','hu','ro','gr','fi']
 
 let flowCache = { data: null, ts: 0 }
-
-async function fetchEntsoeFlow(token, outCode, inCode, periodStart, periodEnd) {
-  const eicOut = COUNTRY_EIC[outCode]
-  const eicIn  = COUNTRY_EIC[inCode]
-  if (!eicOut || !eicIn) return 0
-  const params = new URLSearchParams({
-    documentType: 'A09',
-    out_Domain: eicOut,
-    in_Domain:  eicIn,
-    periodStart,
-    periodEnd,
-    securityToken: token,
-  })
-  try {
-    const r = await fetch(`https://transparency.entsoe.eu/api?${params}`,
-      { signal: AbortSignal.timeout(8000) })
-    if (!r.ok) return 0
-    const xml = await r.text()
-    const matches = [...xml.matchAll(/<quantity>(\d+\.?\d*)<\/quantity>/g)]
-    if (!matches.length) return 0
-    const vals = matches.map(m => parseFloat(m[1]))
-    return vals.reduce((s, v) => s + v, 0) / vals.length  // avg MW over period
-  } catch {
-    return 0
-  }
-}
 
 app.get('/api/energy-flows', async (req, res) => {
   try {
@@ -131,37 +92,61 @@ app.get('/api/energy-flows', async (req, res) => {
     if (flowCache.data && now - flowCache.ts < 30 * 60 * 1000) {
       return res.json(flowCache.data)
     }
-    const token = process.env.ENTSOE_TOKEN
-    if (!token) return res.json({ flows: null, live: false, reason: 'no_token' })
 
-    // Query the hour that ended 1h ago (ensures data is published)
-    const end = new Date()
-    end.setUTCMinutes(0, 0, 0)
-    end.setUTCHours(end.getUTCHours() - 1)
-    const start = new Date(end.getTime() - 60 * 60 * 1000)
-    const fmt = d => {
-      const s = d.toISOString()
-      return s.slice(0,4) + s.slice(5,7) + s.slice(8,10) + s.slice(11,13) + s.slice(14,16)
-    }
-    const ps = fmt(start), pe = fmt(end)
+    // Last 2 hours of 15-min cross-border physical flows
+    const end   = new Date()
+    const start = new Date(end.getTime() - 2 * 60 * 60 * 1000)
+    const startStr = start.toISOString().slice(0, 19) + 'Z'
+    const endStr   = end.toISOString().slice(0, 19) + 'Z'
 
-    // Fetch all pairs in both directions in parallel
-    const fetches = FLOW_PAIRS.flatMap(([a, b]) => [
-      fetchEntsoeFlow(token, a, b, ps, pe),
-      fetchEntsoeFlow(token, b, a, ps, pe),
-    ])
+    const fetches = HUB_COUNTRIES.map(async (country) => {
+      try {
+        const r = await fetch(
+          `https://api.energy-charts.info/cbpf?country=${country}&start=${startStr}&end=${endStr}`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+        if (!r.ok) return null
+        return { country: country.toUpperCase(), data: await r.json() }
+      } catch { return null }
+    })
+
     const settled = await Promise.allSettled(fetches)
 
-    const flows = []
-    for (let i = 0; i < FLOW_PAIRS.length; i++) {
-      const [a, b] = FLOW_PAIRS[i]
-      const fwd = settled[2*i].status     === 'fulfilled' ? settled[2*i].value     : 0
-      const rev = settled[2*i+1].status   === 'fulfilled' ? settled[2*i+1].value   : 0
-      const net = fwd - rev  // positive = A→B
-      if (Math.abs(net) > 20) flows.push({ from: a, to: b, mw: net })
+    // Build canonical bilateral map: key "A-B" (A < B), value = avg GW A→B
+    const flowMap = new Map()
+    for (const s of settled) {
+      if (s.status !== 'fulfilled' || !s.value) continue
+      const { country: C, data } = s.value
+      if (!data?.countries) continue
+
+      for (const neighbor of data.countries) {
+        const N = ECHARTS_NAME_TO_CODE[neighbor.name]
+        if (!N || N === C) continue
+        const vals = (neighbor.data || []).filter(v => v != null)
+        if (!vals.length) continue
+        // Average last 4 points (~1h); positive = import INTO C, i.e. N→C
+        const recentGW = vals.slice(-4).reduce((s, v) => s + v, 0) / Math.min(vals.length, 4)
+        // Canonicalise: A < B alphabetically, positive = A→B
+        const [a, b] = [C, N].sort()
+        const canonGW  = N < C ? recentGW : -recentGW
+        const ex = flowMap.get(`${a}-${b}`) || { total: 0, count: 0 }
+        flowMap.set(`${a}-${b}`, { total: ex.total + canonGW, count: ex.count + 1 })
+      }
     }
 
-    const payload = { flows, live: true, periodEnd: end.toISOString() }
+    const flows = []
+    for (const [key, { total, count }] of flowMap) {
+      const avgGW = total / count
+      if (Math.abs(avgGW) < 0.05) continue  // < 50 MW — skip noise
+      const [a, b] = key.split('-')
+      flows.push({
+        from: avgGW > 0 ? a : b,
+        to:   avgGW > 0 ? b : a,
+        mw:   Math.round(Math.abs(avgGW) * 1000),  // GW → MW
+      })
+    }
+
+    const payload = { flows, live: true, source: 'energy-charts.info', ts: end.toISOString() }
     flowCache = { data: payload, ts: now }
     res.json(payload)
   } catch (e) {
