@@ -374,23 +374,72 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Quick nav cards ── */}
-      <section className="max-w-6xl mx-auto px-6 py-16">
-        <div className="grid md:grid-cols-3 gap-4 mb-16">
+      {/* ── Quick nav cards — 4 per row ── */}
+      <section className="max-w-6xl mx-auto px-6 pt-16 pb-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { to: '/browse',  label: 'Browse Publications',  desc: 'Reports, studies, factsheets from DG ENER & ACER',       icon: '📄' },
+            { to: '/browse',  label: 'Browse Publications',  desc: 'Reports, studies & factsheets from DG ENER & ACER',      icon: '📄' },
             { to: '/eur-lex', label: 'EUR-Lex Legislation',  desc: 'Regulations, directives, decisions — filterable by body', icon: '⚖️' },
-            { to: '/remit',   label: 'REMIT Knowledge Base', desc: 'Q&As, reporting manuals, live ACER news feed',           icon: '📡' },
+            { to: '/remit',   label: 'REMIT Knowledge Base', desc: 'Q&As, reporting manuals and live ACER news feed',         icon: '📡' },
+            { to: '/about',   label: 'About',                desc: 'How the platform works and attribution of data sources',  icon: 'ℹ️' },
           ].map(c => (
             <Link key={c.to} to={c.to} className="group rounded-xl border border-border bg-surface p-5 hover:border-primary/40 hover:bg-primary/5 transition-all">
               <div className="text-2xl mb-3">{c.icon}</div>
-              <div className="font-medium text-text mb-1 group-hover:text-primary transition-colors">{c.label}</div>
+              <div className="font-medium text-text text-sm mb-1 group-hover:text-primary transition-colors">{c.label}</div>
               <div className="text-xs text-muted leading-relaxed">{c.desc}</div>
             </Link>
           ))}
         </div>
+      </section>
 
-        {/* Latest publications table */}
+      {/* ── Data sources ── */}
+      <section className="max-w-6xl mx-auto px-6 pb-16">
+        <div className="rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="px-6 py-4 border-b border-border bg-surface2 flex items-center gap-2">
+            <span className="text-accent text-xs" aria-hidden>★</span>
+            <span className="text-[11px] uppercase tracking-widest text-muted font-mono">Data sources</span>
+          </div>
+          <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+            {[
+              {
+                name: 'CELLAR SPARQL',
+                badge: 'Primary',
+                badgeCls: 'text-primary border-primary/30 bg-primary/10',
+                desc: 'Direct linked-data access to the Publications Office metadata graph. Powers all publication and legislation searches.',
+                href: 'http://publications.europa.eu/webapi/rdf/sparql',
+              },
+              {
+                name: 'OP Search Portlet',
+                badge: 'Fallback',
+                badgeCls: 'text-amber-400 border-amber-400/30 bg-amber-400/10',
+                desc: 'Publications Office search API used as a secondary source when CELLAR returns no results.',
+                href: 'https://op.europa.eu/en/search-results',
+              },
+              {
+                name: 'Open Data Portal',
+                badge: 'Final fallback',
+                badgeCls: 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10',
+                desc: 'data.europa.eu hub queried for energy-category datasets when both primary sources are unavailable.',
+                href: 'https://data.europa.eu/en',
+              },
+            ].map(s => (
+              <div key={s.name} className="px-6 py-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-text text-sm">{s.name}</span>
+                  <span className={`text-[9px] font-mono uppercase tracking-wider border rounded px-1.5 py-0.5 ${s.badgeCls}`}>{s.badge}</span>
+                </div>
+                <p className="text-xs text-muted leading-relaxed flex-1">{s.desc}</p>
+                <a href={s.href} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
+                  View endpoint ↗
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Latest publications ── */}
+      <section className="max-w-6xl mx-auto px-6 pb-24">
         <div className="border-t border-border pt-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display text-xl font-semibold">Latest <span className="text-primary">Publications</span></h2>
