@@ -41,6 +41,7 @@ export default function LegislationDetail() {
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState('loading')
   const [summary, setSummary] = useState(null)
+  const [summaryModel, setSummaryModel] = useState(null)
   const [summaryStatus, setSummaryStatus] = useState('idle') // idle | loading | done | error
   const [summaryError, setSummaryError] = useState(null)
   useDocumentTitle(doc ? doc.title.slice(0, 60) + '…' : 'EUR-Lex · Detail')
@@ -75,6 +76,7 @@ export default function LegislationDetail() {
       const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
       setSummary(data.summary)
+      setSummaryModel(data.model || null)
       setSummaryStatus('done')
     } catch (e) {
       setSummaryError(e.message)
@@ -163,7 +165,7 @@ export default function LegislationDetail() {
           <div className="w-full max-w-3xl rounded-xl border border-primary/25 bg-primary/5 p-6">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-primary text-xs">✦</span>
-              <span className="text-[10px] uppercase tracking-widest text-primary font-mono">AI Summary · Gemma via OpenRouter</span>
+              <span className="text-[10px] uppercase tracking-widest text-primary font-mono">AI Summary · {summaryModel || 'OpenRouter'}</span>
             </div>
             <p className="text-text text-sm leading-relaxed">{summary}</p>
             <button

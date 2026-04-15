@@ -42,8 +42,18 @@ app.get('/api/acer-rss', async (req, res) => {
   }
 })
 
-// ── AI summarize via OpenRouter (google/gemma-4-26b-a4b-it:free) ─────────────
+// ── AI summarize via OpenRouter — tries models in order until one succeeds ────
+const SUMMARY_MODELS = [
+  'google/gemma-4-26b-a4b-it:free',
+  'google/gemma-3-27b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemma-3-12b-it:free',
+]
+
 app.post('/api/summarize', async (req, res) => {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY not set on server' })
+  }
   try {
     const { title, date, type, subjects, agents } = req.body
     const prompt = `Write a concise 2-3 sentence factual summary for this EU energy publication based on its metadata. Do not include disclaimers — just write the summary directly.
@@ -54,38 +64,41 @@ Date: ${date || 'Unknown'}
 Subject areas: ${subjects?.join(', ') || 'Energy policy'}
 Issuing body: ${agents?.join(', ') || 'European Commission'}`
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      return res.status(500).json({ error: 'OPENROUTER_API_KEY not set on server' })
+    let lastError = 'All models failed'
+    for (const model of SUMMARY_MODELS) {
+      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://eu-energy-explorer.app',
+          'X-Title': 'EU Energy Explorer',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 300,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      })
+
+      const rawText = await upstream.text()
+      console.log(`[summarize] ${model} → ${upstream.status}`)
+
+      if (!upstream.ok) {
+        lastError = `${model}: HTTP ${upstream.status}`
+        continue  // try next model
+      }
+
+      let data
+      try { data = JSON.parse(rawText) } catch { lastError = 'Invalid JSON'; continue }
+
+      const summary = data.choices?.[0]?.message?.content?.trim()
+      if (!summary) { lastError = 'Empty response'; continue }
+
+      return res.json({ summary, model })
     }
 
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://eu-energy-explorer.app',
-        'X-Title': 'EU Energy Explorer',
-      },
-      body: JSON.stringify({
-        model: 'google/gemma-4-26b-a4b-it:free',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-
-    const rawText = await upstream.text()
-    console.log(`[summarize] OpenRouter ${upstream.status}:`, rawText.slice(0, 300))
-
-    if (!upstream.ok) {
-      return res.status(502).json({ error: `OpenRouter ${upstream.status}: ${rawText}` })
-    }
-
-    let data
-    try { data = JSON.parse(rawText) } catch { return res.status(502).json({ error: 'Invalid JSON from OpenRouter' }) }
-
-    const summary = data.choices?.[0]?.message?.content?.trim()
-    if (!summary) return res.status(502).json({ error: `No content in response: ${JSON.stringify(data).slice(0, 200)}` })
-    res.json({ summary })
+    res.status(502).json({ error: lastError })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
