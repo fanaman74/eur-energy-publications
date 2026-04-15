@@ -130,46 +130,67 @@ export default function LegislationDetail() {
         })
       }
 
-      // ── Parse summary markdown into 3 section groups ──────────────────────
-      function extractSectionBullets(text, keywords) {
-        const lines = text.split('\n')
-        const result = []
-        let inSection = false
-        for (let i = 0; i < lines.length; i++) {
-          const t = lines[i].trim()
-          // Detect heading matching any keyword
-          if (/^#{1,4}\s/.test(t)) {
-            const heading = t.replace(/^#{1,4}\s*/, '').toUpperCase()
-            inSection = keywords.some(k => heading.includes(k.toUpperCase()))
-            continue
-          }
-          if (inSection) {
-            // Stop at next heading
-            if (/^#{1,4}\s/.test(t) && t !== '') { inSection = false; continue }
-            // Collect bullets and paragraph sentences
-            const bullet = t.replace(/^\s*[-*]\s*/, '').replace(/^\*\*([^*]+):\*\*\s*/, '')
-                            .replace(/\*\*/g, '').trim()
-            if (bullet && bullet.length > 10) result.push(bullet)
-          }
+      // ── Ask AI to structure slide content from the briefing note ─────────────
+      let slideData = null
+      try {
+        const aiRes = await fetch('/api/slide-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            summary,
+            title: doc.title,
+            date: doc.date,
+            type: doc.typeLabel,
+            celex: doc.celex || null,
+          }),
+        })
+        if (aiRes.ok) {
+          const aiJson = await aiRes.json()
+          slideData = aiJson.slide || null
         }
-        return result.slice(0, 5)
+      } catch (e) {
+        console.warn('[slide-content] AI call failed, falling back to regex parse:', e.message)
       }
 
-      const execBullets  = extractSectionBullets(summary, ['EXECUTIVE', 'OVERVIEW', 'SUMMARY'])
-      const riskBullets  = extractSectionBullets(summary, ['RISK', 'IMPACT', 'LEGAL', 'COMPLIANCE', 'POLICY'])
-      const actionBullets = extractSectionBullets(summary, ['ACTION', 'RECOMMENDATION', 'ENEL', 'STRATEGIC', 'REQUIRED'])
-
-      // Fallback: if any group is empty, pull from paragraphs
-      function fallbackBullets(text, skip) {
-        return text.split('\n')
-          .map(l => l.replace(/^\s*[-*]\s*/, '').replace(/\*\*/g, '').trim())
-          .filter(l => l.length > 20 && !/^#{1,4}/.test(l) && !skip.some(s => l === s))
-          .slice(0, 4)
+      // ── Regex fallback if AI call fails ──────────────────────────────────────
+      if (!slideData) {
+        function extractSectionBullets(text, keywords) {
+          const lines = text.split('\n')
+          const result = []
+          let inSection = false
+          for (const t of lines.map(l => l.trim())) {
+            if (/^#{1,4}\s/.test(t)) {
+              const heading = t.replace(/^#{1,4}\s*/, '').toUpperCase()
+              inSection = keywords.some(k => heading.includes(k.toUpperCase()))
+              continue
+            }
+            if (inSection) {
+              const bullet = t.replace(/^\s*[-*]\s*/, '').replace(/^\*\*([^*]+):\*\*\s*/, '').replace(/\*\*/g, '').trim()
+              if (bullet && bullet.length > 10) result.push(bullet)
+            }
+          }
+          return result.slice(0, 4)
+        }
+        const exec    = extractSectionBullets(summary, ['EXECUTIVE', 'OVERVIEW', 'SUMMARY'])
+        const risks   = extractSectionBullets(summary, ['RISK', 'IMPACT', 'LEGAL', 'COMPLIANCE'])
+        const actions = extractSectionBullets(summary, ['ACTION', 'RECOMMENDATION', 'ENEL', 'STRATEGIC', 'REQUIRED'])
+        slideData = {
+          title: doc.title,
+          subtitle: `${doc.typeLabel || 'Publication'} · ${formatDate(doc.date)}${doc.celex ? ' · ' + doc.celex : ''}`,
+          issuing_body: doc.agents?.map(a => a.label).join(', ') || '',
+          relevance: 'MEDIUM', urgency: 'MONITOR',
+          columns: [
+            { label: 'EXECUTIVE SUMMARY', theme: 'blue',  bullets: exec.length   ? exec   : ['See full briefing note for details.'] },
+            { label: 'KEY RISKS & IMPACT', theme: 'amber', bullets: risks.length  ? risks  : ['Review full briefing note.'] },
+            { label: 'REQUIRED ACTIONS',  theme: 'green', bullets: actions.length ? actions : ['Consult Regulatory Affairs team.'] },
+          ],
+          footer_note: '',
+        }
       }
-      const allBullets = fallbackBullets(summary, [...execBullets, ...riskBullets, ...actionBullets])
-      const exec   = execBullets.length   ? execBullets   : allBullets.slice(0, 2)
-      const risks  = riskBullets.length   ? riskBullets   : allBullets.slice(2, 4)
-      const actions = actionBullets.length ? actionBullets : allBullets.slice(4, 6)
+
+      const exec    = slideData.columns[0]?.bullets || []
+      const risks   = slideData.columns[1]?.bullets || []
+      const actions = slideData.columns[2]?.bullets || []
 
       // ── Build PPTX ───────────────────────────────────────────────────────────
       // eslint-disable-next-line no-undef
@@ -228,8 +249,9 @@ export default function LegislationDetail() {
         })
       }
 
-      // Document title — truncate to ~120 chars for slide legibility
-      const titleText = doc.title.length > 130 ? doc.title.slice(0, 127) + '…' : doc.title
+      // Document title — use AI-rewritten title if available, else original
+      const rawTitle = slideData.title || doc.title
+      const titleText = rawTitle.length > 130 ? rawTitle.slice(0, 127) + '…' : rawTitle
       slide.addText(titleText, {
         x: 0.2, y: 0.85, w: 12.9, h: 0.9,
         fontSize: 14, bold: true, color: 'FFFFFF',
@@ -287,13 +309,19 @@ export default function LegislationDetail() {
 
       // ── FOOTER ──────────────────────────────────────────────────────────────
       slide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.1, w: 13.33, h: 0.4, fill: { color: '060b14' }, line: { color: '1e2d4a', width: 0.5 } })
-      slide.addText('Prepared by ENEL Regulatory Affairs Research Unit  ·  EU Energy Explorer  ·  For regulatory use only', {
-        x: 0.2, y: 7.12, w: 10, h: 0.3,
-        fontSize: 6.5, color: '2d4a7a', fontFace: 'Calibri',
+      // AI footer note (key deadline / compliance point) or attribution fallback
+      const footerLeft = slideData.footer_note
+        ? slideData.footer_note
+        : 'Prepared by ENEL Regulatory Affairs Research Unit  ·  EU Energy Explorer  ·  For regulatory use only'
+      slide.addText(footerLeft, {
+        x: 0.2, y: 7.12, w: 10.5, h: 0.3,
+        fontSize: 6.5, color: slideData.footer_note ? 'fcd34d' : '2d4a7a', fontFace: 'Calibri',
       })
-      slide.addText('1 / 1', {
-        x: 11.5, y: 7.12, w: 1.6, h: 0.3,
-        fontSize: 6.5, color: '2d4a7a', fontFace: 'Calibri', align: 'right',
+      // Relevance + urgency badge
+      const badge = `${slideData.relevance || ''}  ·  ${slideData.urgency || ''}  ·  1 / 1`
+      slide.addText(badge, {
+        x: 10.5, y: 7.12, w: 2.6, h: 0.3,
+        fontSize: 6, color: '2d4a7a', fontFace: 'Calibri', align: 'right',
       })
 
       await pptx.writeFile({ fileName: `enel-briefing-${doc.celex || workId.slice(0, 8)}.pptx` })

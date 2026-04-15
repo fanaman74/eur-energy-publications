@@ -231,6 +231,94 @@ app.post('/api/reload-prompt', (_req, res) => {
   }
 })
 
+// ── PPTX slide content prompt ─────────────────────────────────────────────────
+// Edit aipptx.md to change how the AI structures slide content.
+let PPTX_SYSTEM_PROMPT = (() => {
+  try {
+    return readFileSync(new URL('./aipptx.md', import.meta.url), 'utf8').trim()
+  } catch {
+    console.warn('[pptx-prompt] aipptx.md not found — using empty fallback')
+    return ''
+  }
+})()
+
+app.post('/api/reload-pptx-prompt', (_req, res) => {
+  try {
+    PPTX_SYSTEM_PROMPT = readFileSync(new URL('./aipptx.md', import.meta.url), 'utf8').trim()
+    console.log(`[pptx-prompt] reloaded from aipptx.md (${PPTX_SYSTEM_PROMPT.length} chars)`)
+    res.json({ ok: true, chars: PPTX_SYSTEM_PROMPT.length })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── AI slide content endpoint ─────────────────────────────────────────────────
+// Accepts a completed briefing note (markdown) + doc metadata.
+// Returns structured JSON for the pptxgenjs slide renderer.
+app.post('/api/slide-content', async (req, res) => {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY not set on server' })
+  }
+  const { summary, title, date, type, celex } = req.body
+  if (!summary) return res.status(400).json({ error: 'summary is required' })
+
+  const apiKey = (process.env.OPENROUTER_API_KEY || '').trim()
+  const userMessage = [
+    title  ? `Document title: ${title}`  : null,
+    celex  ? `CELEX: ${celex}`           : null,
+    type   ? `Type: ${type}`             : null,
+    date   ? `Date: ${date}`             : null,
+    '',
+    'BRIEFING NOTE:',
+    summary,
+  ].filter(v => v !== null).join('\n')
+
+  let lastError = 'All models failed'
+  for (const model of SUMMARY_MODELS) {
+    try {
+      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://eu-energy-explorer.app',
+          'X-Title': 'EU Energy Explorer',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1200,
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: PPTX_SYSTEM_PROMPT },
+            { role: 'user',   content: userMessage },
+          ],
+        }),
+      })
+
+      const rawText = await upstream.text()
+      console.log(`[slide-content] ${model} → ${upstream.status}`)
+      if (!upstream.ok) { lastError = `${model}: HTTP ${upstream.status}`; continue }
+
+      let data
+      try { data = JSON.parse(rawText) } catch { lastError = 'Invalid JSON from upstream'; continue }
+
+      const content = data.choices?.[0]?.message?.content?.trim()
+      if (!content) { lastError = 'Empty response'; continue }
+
+      // Strip any accidental markdown fences the model may wrap around the JSON
+      const jsonStr = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+      let slide
+      try { slide = JSON.parse(jsonStr) } catch { lastError = 'Model did not return valid JSON'; continue }
+
+      return res.json({ slide, model })
+    } catch (e) {
+      lastError = e.message
+    }
+  }
+
+  res.status(502).json({ error: lastError })
+})
+
 // Chunk a long document on Article boundaries to stay within context limits
 function chunkDocument(text, maxChars = 120000) {
   if (text.length <= maxChars) return [text]
