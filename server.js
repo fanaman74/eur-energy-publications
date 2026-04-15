@@ -143,91 +143,111 @@ async function fetchManifest(abs, headers) {
   return text
 }
 
-async function fetchLegislativeFullText(workId, celex, browserHeaders = CELLAR_HEADERS) {
-  const base = `https://publications.europa.eu/resource/cellar/${workId}`
-  // Merge caller-supplied headers over the safe defaults
-  const headers = { ...CELLAR_HEADERS, ...browserHeaders }
-  Object.keys(headers).forEach(k => { if (!headers[k]) delete headers[k] })
+async function fetchLegislativeFullText(workId, celex) {
+  // ── Strategy 1: CELLAR proper content negotiation ─────────────────────────
+  // Send Accept: application/xhtml+xml + Accept-Language: en to the CELLAR
+  // resource URI. CELLAR returns HTTP 303 See Other with a Location header
+  // pointing directly to the English XHTML manifestation. Follow the redirect
+  // and read the content. This is the documented CELLAR REST behaviour.
+  if (workId) {
+    const cellarBase = `https://publications.europa.eu/resource/cellar/${workId}`
+    for (const acceptType of ['application/xhtml+xml', 'text/html', 'application/pdf']) {
+      try {
+        console.log(`[fulltext] CELLAR 303 probe (${acceptType}) → ${cellarBase}`)
+        const probe = await fetch(cellarBase, {
+          method: 'GET',
+          headers: {
+            ...CELLAR_HEADERS,
+            'Accept': acceptType,
+            'Accept-Language': 'en,en-GB;q=0.9',
+          },
+          signal: AbortSignal.timeout(15000),
+          redirect: 'manual',   // capture 303 Location without following blindly
+        })
+        console.log(`[fulltext] CELLAR → ${probe.status}`)
 
-  // Step 1: content negotiation — CELLAR returns 300 with a list of manifestation URIs.
-  // We request HTML+PDF so CELLAR offers all available formats.
-  let choiceLinks = []
-  try {
-    const res = await fetch(base, {
-      headers: { ...headers, Accept: 'text/html,application/xhtml+xml,application/pdf,*/*;q=0.8' },
-      signal: AbortSignal.timeout(12000),
-      redirect: 'follow',
-    })
-    const ct = res.headers.get('content-type') || ''
-    console.log(`[fulltext] discovery → ${res.status} ct=${ct.slice(0, 50)}`)
-    const body = await res.text()
-    console.log(`[fulltext] body ${body.length}ch: ${body.slice(0, 100).replace(/\s+/g, ' ')}`)
+        let contentUrl = null
+        if (probe.status === 303 || probe.status === 302 || probe.status === 301) {
+          contentUrl = probe.headers.get('location')
+          console.log(`[fulltext] Location: ${contentUrl}`)
+        } else if (probe.ok) {
+          // Occasionally returns content directly
+          const ct = probe.headers.get('content-type') || ''
+          const body = await probe.text()
+          const text = (ct.includes('html') || body.trimStart().startsWith('<')) ? stripHtml(body) : body
+          if (!isWafPage(text) && hasArticleContent(text)) {
+            console.log(`[fulltext] ✓ CELLAR direct ${text.length}ch`)
+            return text
+          }
+        }
 
-    if (res.status === 300 || body.includes('Multiple-Choice')) {
-      // CELLAR's 300 body is an HTML page listing manifestation hrefs
-      choiceLinks = extractChoiceLinks(body)
-      console.log(`[fulltext] ${choiceLinks.length} choices: ${choiceLinks.map(l => l.split('/').slice(-2).join('/')).join(', ')}`)
-    } else if (res.ok) {
-      // Direct content (unusual — CELLAR almost always returns 300)
-      let text = body
-      if (ct.includes('pdf')) {
-        const buf = Buffer.from(Buffer.from(body, 'binary'))
-        try { const p = await pdfParse(buf); text = p.text?.replace(/\s+/g, ' ').trim() || '' } catch {}
-      } else if (ct.includes('html') || text.trimStart().startsWith('<')) {
-        text = stripHtml(text)
+        if (contentUrl) {
+          const docRes = await fetch(contentUrl, {
+            headers: { ...CELLAR_HEADERS, 'Accept-Language': 'en,en-GB;q=0.9' },
+            signal: AbortSignal.timeout(25000),
+            redirect: 'follow',
+          })
+          const ct = docRes.headers.get('content-type') || ''
+          console.log(`[fulltext] content → ${docRes.status} ${ct.slice(0, 40)}`)
+          if (!docRes.ok) continue
+
+          if (ct.includes('pdf') || contentUrl.toLowerCase().includes('pdf')) {
+            try {
+              const buf = Buffer.from(await docRes.arrayBuffer())
+              const parsed = await pdfParse(buf)
+              const text = parsed.text?.replace(/\s+/g, ' ').trim() || ''
+              if (text.length > 200 && hasArticleContent(text)) {
+                console.log(`[fulltext] ✓ CELLAR PDF ${text.length}ch`)
+                return text
+              }
+            } catch (e) { console.log(`[fulltext] pdf-parse error: ${e.message}`) }
+          } else {
+            const raw = await docRes.text()
+            const text = (ct.includes('html') || raw.trimStart().startsWith('<')) ? stripHtml(raw) : raw
+            if (!isWafPage(text) && hasArticleContent(text)) {
+              console.log(`[fulltext] ✓ CELLAR ${acceptType} ${text.length}ch`)
+              return text
+            }
+            console.log(`[fulltext] content has no article patterns (${text.length}ch) — trying next accept type`)
+          }
+        }
+      } catch (e) {
+        console.log(`[fulltext] CELLAR probe error (${acceptType}): ${e.message}`)
       }
-      if (!isWafPage(text)) { console.log(`[fulltext] ✓ direct ${text.length}ch`); return text }
     }
-  } catch (e) { console.log(`[fulltext] discovery error: ${e.message}`) }
-
-  if (!choiceLinks.length) {
-    console.log('[fulltext] no choice links — trying EUR-Lex fallback')
-    const eurLexText = await fetchEurLexFullText(celex)
-    if (eurLexText) { console.log(`[fulltext] ✓ EUR-Lex fallback (no choices) ${eurLexText.length} chars`); return eurLexText }
-    console.log('[fulltext] EUR-Lex fallback also failed — no content available')
-    return null
+    console.log('[fulltext] CELLAR content negotiation exhausted — trying EUR-Lex')
   }
 
-  const toAbs = (l) => l.startsWith('http') ? l : `https://publications.europa.eu${l}`
-  // Exclude pure metadata/RDF endpoints; include everything else
-  const isContent = (l) =>
-    !l.includes('/rdf/object') && !l.includes('sparql') &&
-    !/\/metadata\b/.test(l) && !l.endsWith('.rdf')
-
-  // Order: prefer named HTML manifestations (DOC, FMX) → PDF → numeric/unknown
-  const rank = (l) => {
-    const seg = l.split('/').pop().toUpperCase()
-    if (/DOC|FMX|HTML|XHTML/.test(seg)) return 0   // HTML — fastest, cleanest
-    if (/PDF/.test(seg)) return 1                    // PDF — common for proposals
-    return 2                                          // numeric suffix — probe last
-  }
-  const candidates = choiceLinks.filter(isContent).sort((a, b) => rank(a) - rank(b))
-
-  console.log(`[fulltext] trying ${candidates.length} candidates in order`)
-  for (const link of candidates) {
-    const text = await fetchManifest(toAbs(link), headers)
-    if (text) { console.log(`[fulltext] ✓ ${text.length} chars from ${link.split('/').slice(-2).join('/')}`); return text }
+  // ── Strategy 2: EUR-Lex by CELLAR UUID ───────────────────────────────────
+  // EUR-Lex accepts ?uri=CELLAR:{uuid} and reliably serves the full text HTML
+  // for most document types including internal Commission acts.
+  if (workId) {
+    const eurLexByCellar = await fetchEurLexFullText(null, workId)
+    if (eurLexByCellar) return eurLexByCellar
   }
 
-  console.log('[fulltext] all candidates exhausted — trying EUR-Lex fallback')
-  const eurLexText = await fetchEurLexFullText(celex)
-  if (eurLexText) {
-    console.log(`[fulltext] ✓ EUR-Lex fallback succeeded (${eurLexText.length} chars)`)
-    return eurLexText
+  // ── Strategy 3: EUR-Lex by CELEX number ──────────────────────────────────
+  if (celex) {
+    const eurLexByCelex = await fetchEurLexFullText(celex, null)
+    if (eurLexByCelex) return eurLexByCelex
   }
-  console.log('[fulltext] EUR-Lex fallback also failed — no content available')
+
+  console.log('[fulltext] all strategies exhausted — no content available')
   return null
 }
 
 // ── EUR-Lex direct fallback — fetches full text by CELEX number ───────────────
 // Used when CELLAR content negotiation returns no usable links.
 // EUR-Lex /TXT/HTML/ endpoint reliably returns the consolidated HTML text.
-async function fetchEurLexFullText(celex) {
-  if (!celex) return null
+async function fetchEurLexFullText(celex, cellarUuid) {
+  if (!celex && !cellarUuid) return null
   const urls = [
-    `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
-    `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:${encodeURIComponent(celex)}`,
-  ]
+    // CELLAR UUID takes priority — works for Commission acts not indexed by CELEX
+    cellarUuid ? `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(cellarUuid)}` : null,
+    celex      ? `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`       : null,
+    cellarUuid ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELLAR:${encodeURIComponent(cellarUuid)}`      : null,
+    celex      ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:${encodeURIComponent(celex)}`            : null,
+  ].filter(Boolean)
   for (const url of urls) {
     try {
       console.log(`[fulltext-eurlex] trying ${url}`)
@@ -412,7 +432,7 @@ app.post('/api/summarize', async (req, res) => {
       fullText = await fetchLegislativeFullText(workId, celex)
     } else if (celex) {
       console.log(`[summarize] no workId — trying EUR-Lex directly for ${celex}`)
-      fullText = await fetchEurLexFullText(celex)
+      fullText = await fetchEurLexFullText(celex, null)
     }
     if (!fullText && clientFullText) fullText = clientFullText
 
