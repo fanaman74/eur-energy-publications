@@ -651,9 +651,24 @@ export default function LegislationDetail() {
               {doc.languages.length > 0 && (
                 <MetaRow label="Languages">
                   <div className="flex flex-wrap gap-1.5">
-                    {doc.languages.map(l => (
-                      <span key={l} className="text-[10px] font-mono border border-border rounded px-1.5 py-0.5 text-muted">{l}</span>
-                    ))}
+                    {doc.languages.map(l => {
+                      const isEngFullText = l === 'ENG' && summarySource === 'Full text'
+                      return (
+                        <span
+                          key={l}
+                          title={isEngFullText ? 'Full text retrieved' : undefined}
+                          className="text-[10px] font-mono rounded px-1.5 py-0.5"
+                          style={isEngFullText ? {
+                            border: '1px solid rgba(239,68,68,0.5)',
+                            background: 'rgba(239,68,68,0.12)',
+                            color: '#fca5a5',
+                          } : {
+                            border: '1px solid var(--border)',
+                            color: 'var(--muted)',
+                          }}
+                        >{l}</span>
+                      )
+                    })}
                   </div>
                 </MetaRow>
               )}
