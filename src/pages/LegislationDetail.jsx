@@ -501,14 +501,18 @@ export default function LegislationDetail() {
 
               {/* Source badge */}
               {summarySource && (
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border ${
-                  summarySource === 'Full text'
-                    ? 'text-emerald-300 border-emerald-400/25 bg-emerald-400/8'
-                    : 'text-amber-300 border-amber-400/25 bg-amber-400/8'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${summarySource === 'Full text' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  {summarySource}
-                </div>
+                summarySource === 'Full text' ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border"
+                       style={{ color: '#fca5a5', borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 5px #ef4444', flexShrink: 0 }} />
+                    ● Full text
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border text-amber-300 border-amber-400/25 bg-amber-400/8">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    {summarySource}
+                  </div>
+                )
               )}
 
               {summaryModel && (
@@ -747,7 +751,15 @@ export default function LegislationDetail() {
               className="w-full flex items-center justify-between px-5 py-3 bg-surface2 hover:bg-surface transition-colors text-left"
             >
               <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-widest text-muted font-mono">Full text</span>
+                {summarySource === 'Full text' ? (
+                  <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-mono font-bold"
+                        style={{ color: '#f87171' }}>
+                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
+                    Full text · used for AI analysis
+                  </span>
+                ) : (
+                  <span className="text-[10px] uppercase tracking-widest text-muted font-mono">Full text</span>
+                )}
                 {fullTextStatus === 'loading' && (
                   <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                 )}
