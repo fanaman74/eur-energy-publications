@@ -204,6 +204,19 @@ function FadeIn({ children, delay = 0, className = '' }) {
   )
 }
 
+// ── CELLAR Atom feed — newly published works ──────────────────────────────────
+function useAtomFeed() {
+  const [entries, setEntries] = useState([])
+  const [status, setStatus]   = useState('loading')
+  useEffect(() => {
+    fetch('/api/atom-feed')
+      .then(r => r.json())
+      .then(d => { setEntries(d.entries || []); setStatus('done') })
+      .catch(() => setStatus('error'))
+  }, [])
+  return { entries, status }
+}
+
 // ── Latest publications hook ──────────────────────────────────────────────────
 function useLatestPublications() {
   const [results, setResults] = useState([])
@@ -222,6 +235,7 @@ function useLatestPublications() {
 export default function Home() {
   useDocumentTitle('EU Energy Publications')
   const { results, status } = useLatestPublications()
+  const { entries, status: feedStatus } = useAtomFeed()
 
   return (
     <div>
@@ -378,13 +392,97 @@ export default function Home() {
       </section>
 
       {/* ── Latest publications ── */}
-      <section className="max-w-6xl mx-auto px-6 pb-24">
+      <section className="max-w-6xl mx-auto px-6 pb-16">
         <div className="border-t border-border pt-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display text-xl font-semibold">Latest <span className="text-primary">Publications</span></h2>
             <Link to="/browse" className="text-sm text-muted hover:text-primary transition-colors">Browse all →</Link>
           </div>
           {status === 'loading' ? <Spinner label="Loading latest publications…" /> : <PublicationTable results={results} />}
+        </div>
+      </section>
+
+      {/* ── Newly published in CELLAR (Atom feed) ── */}
+      <section className="max-w-6xl mx-auto px-6 pb-24">
+        <div className="border-t border-border pt-12">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="font-display text-xl font-semibold mb-1">
+                Newly published in <span className="text-primary">CELLAR</span>
+              </h2>
+              <p className="text-xs text-muted">Latest works registered in the Publications Office — updated every 15 min</p>
+            </div>
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono uppercase tracking-wider">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live feed
+            </span>
+          </div>
+
+          {feedStatus === 'loading' && <Spinner label="Loading CELLAR feed…" />}
+          {feedStatus === 'error' && (
+            <p className="text-sm text-muted text-center py-8">Could not load the CELLAR notification feed.</p>
+          )}
+          {feedStatus === 'done' && entries.length === 0 && (
+            <p className="text-sm text-muted text-center py-8">No entries found in the feed.</p>
+          )}
+          {feedStatus === 'done' && entries.length > 0 && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface2">
+                    <th className="px-5 py-3 text-left text-[10px] uppercase tracking-widest text-muted font-mono font-normal">Title</th>
+                    <th className="px-5 py-3 text-left text-[10px] uppercase tracking-widest text-muted font-mono font-normal w-36 hidden sm:table-cell">Published</th>
+                    <th className="px-5 py-3 w-20"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {entries.map((entry, i) => {
+                    const cellarLink = entry.cellarId
+                      ? `http://publications.europa.eu/resource/cellar/${entry.cellarId}`
+                      : entry.link
+                    const eurLexHref = entry.cellarId
+                      ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELLAR:${entry.cellarId}`
+                      : entry.link
+                    const dateStr = entry.updated
+                      ? new Date(entry.updated).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : '—'
+                    return (
+                      <tr key={entry.id || i} className="hover:bg-primary/5 transition-colors">
+                        <td className="px-5 py-3 leading-snug">
+                          <span className="text-text text-sm line-clamp-2">{entry.title || 'Untitled'}</span>
+                          {entry.cellarId && (
+                            <span className="block text-[10px] font-mono text-muted mt-0.5 truncate">{entry.cellarId}</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 font-mono text-xs text-muted whitespace-nowrap hidden sm:table-cell">{dateStr}</td>
+                        <td className="px-5 py-3 text-right">
+                          <a
+                            href={eurLexHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary hover:underline font-mono"
+                          >
+                            EUR-Lex ↗
+                          </a>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div className="px-5 py-3 border-t border-border bg-surface2 flex items-center justify-between">
+                <span className="text-[10px] text-muted font-mono">Source: publications.europa.eu/webapi/notification · cached 15 min</span>
+                <a
+                  href="https://publications.europa.eu/webapi/notification/?lang=EN&type=work"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-primary hover:underline font-mono"
+                >
+                  Raw feed ↗
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </div>

@@ -228,7 +228,7 @@ export function buildLegislationDetailQuery(workUri) {
 PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT DISTINCT ?title ?date ?type ?celex ?entryIntoForce ?endOfValidity ?agent ?subjectLabel ?lang
+SELECT DISTINCT ?title ?abstract ?date ?type ?celex ?entryIntoForce ?endOfValidity ?agent ?subjectLabel ?lang
 WHERE {
   BIND(<${workUri}> AS ?work)
   ?work cdm:work_has_resource-type ?type .
@@ -245,6 +245,7 @@ WHERE {
   ?expr cdm:expression_belongs_to_work ?work .
   ?expr cdm:expression_title ?title .
   ?expr cdm:expression_uses_language <http://publications.europa.eu/resource/authority/language/ENG> .
+  OPTIONAL { ?expr cdm:expression_abstract ?abstract . }
   OPTIONAL {
     ?anyExpr cdm:expression_belongs_to_work ?work .
     ?anyExpr cdm:expression_uses_language ?langUri .

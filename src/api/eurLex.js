@@ -122,6 +122,7 @@ export async function fetchLegislationDetail(workId, { signal } = {}) {
     celex:          first.celex?.value || null,
     entryIntoForce: first.entryIntoForce?.value || null,
     endOfValidity:  first.endOfValidity?.value || null,
+    abstract:       first.abstract?.value || null,
     agents:         [...agentSet].map(uri => ({ uri, label: agentLabel(uri) })),
     subjects:       [...subjectSet].sort(),
     languages:      [...langSet].sort(),

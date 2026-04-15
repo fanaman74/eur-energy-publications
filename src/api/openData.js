@@ -1,4 +1,5 @@
-import { ApiError } from './cellar'
+import { ApiError, fetchPublications } from './cellar'
+import { searchPublications } from './opSearch'
 
 const BASE = '/api/opendata/datasets'
 
@@ -31,9 +32,6 @@ export async function fetchDatasets({ query = 'energy', limit = 20 } = {}, { sig
 }
 
 export async function fetchWithFallback(params, opts) {
-  const { fetchPublications } = await import('./cellar')
-  const { searchPublications } = await import('./opSearch')
-
   // Tier 1: CELLAR SPARQL
   try {
     const r = await fetchPublications(params, opts)
