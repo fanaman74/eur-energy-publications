@@ -21,6 +21,7 @@ const TYPE_COLOR = {
 }
 
 const DEBOUNCE_MS = 400
+const DEFAULT_YEAR = '2020'
 const YEAR_OPTIONS = Array.from({ length: new Date().getFullYear() - 2009 }, (_, i) => 2010 + i).reverse()
 
 export default function EurLex() {
@@ -30,7 +31,7 @@ export default function EurLex() {
   const [query, setQuery]       = useState(searchParams.get('q')    || '')
   const [typeKey, setTypeKey]   = useState(searchParams.get('type') || '')
   const [bodyKey, setBodyKey]   = useState(searchParams.get('body') || '')
-  const [dateFrom, setDateFrom] = useState(searchParams.get('from') || '2010')
+  const [dateFrom, setDateFrom] = useState(searchParams.get('from') || DEFAULT_YEAR)
   const [docs, setDocs]         = useState([])
   const [status, setStatus]     = useState('idle')
   const debounceRef = useRef(null)
@@ -43,7 +44,7 @@ export default function EurLex() {
         keyword: q,
         typeKey: type || null,
         bodyKey: body || null,
-        dateFrom: `${from || '2010'}-01-01`,
+        dateFrom: `${from || DEFAULT_YEAR}-01-01`,
         limit: 40,
       },
       { signal: controller.signal }
@@ -57,7 +58,7 @@ export default function EurLex() {
     const q    = searchParams.get('q')    || ''
     const type = searchParams.get('type') || ''
     const body = searchParams.get('body') || ''
-    const from = searchParams.get('from') || '2010'
+    const from = searchParams.get('from') || DEFAULT_YEAR
     setQuery(q); setTypeKey(type); setBodyKey(body); setDateFrom(from)
     return load(q, type, body, from)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
