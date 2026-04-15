@@ -230,13 +230,6 @@ export default function EurLex() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex gap-2 justify-center">
-                            <Link
-                              to={`/eur-lex/${detailId}`}
-                              className="text-xs text-accent hover:underline"
-                              title="View details"
-                            >
-                              Detail
-                            </Link>
                             <a
                               href={eurLexUrl(pub)}
                               target="_blank"
