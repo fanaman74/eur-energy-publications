@@ -49,6 +49,7 @@ export default function LegislationDetail() {
   const [summaryError, setSummaryError] = useState(null)
   const [summaryModalOpen, setSummaryModalOpen] = useState(false)
   const [summaryStep, setSummaryStep] = useState('')  // progress label shown while loading
+  const [slideExporting, setSlideExporting] = useState(false)
 
   const [fullText, setFullText] = useState(null)
   const [fullTextStatus, setFullTextStatus] = useState('idle')
@@ -111,6 +112,196 @@ export default function LegislationDetail() {
     } catch (e) {
       setSummaryError(e.message)
       setSummaryStatus('error')
+    }
+  }
+
+  // ── PowerPoint slide export ──────────────────────────────────────────────────
+  async function handleExportSlide() {
+    if (slideExporting || !summary || !doc) return
+    setSlideExporting(true)
+    try {
+      // Load pptxgenjs from CDN on demand
+      if (!window.PptxGenJS) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+          s.onload = resolve; s.onerror = reject
+          document.head.appendChild(s)
+        })
+      }
+
+      // ── Parse summary markdown into 3 section groups ──────────────────────
+      function extractSectionBullets(text, keywords) {
+        const lines = text.split('\n')
+        const result = []
+        let inSection = false
+        for (let i = 0; i < lines.length; i++) {
+          const t = lines[i].trim()
+          // Detect heading matching any keyword
+          if (/^#{1,4}\s/.test(t)) {
+            const heading = t.replace(/^#{1,4}\s*/, '').toUpperCase()
+            inSection = keywords.some(k => heading.includes(k.toUpperCase()))
+            continue
+          }
+          if (inSection) {
+            // Stop at next heading
+            if (/^#{1,4}\s/.test(t) && t !== '') { inSection = false; continue }
+            // Collect bullets and paragraph sentences
+            const bullet = t.replace(/^\s*[-*]\s*/, '').replace(/^\*\*([^*]+):\*\*\s*/, '')
+                            .replace(/\*\*/g, '').trim()
+            if (bullet && bullet.length > 10) result.push(bullet)
+          }
+        }
+        return result.slice(0, 5)
+      }
+
+      const execBullets  = extractSectionBullets(summary, ['EXECUTIVE', 'OVERVIEW', 'SUMMARY'])
+      const riskBullets  = extractSectionBullets(summary, ['RISK', 'IMPACT', 'LEGAL', 'COMPLIANCE', 'POLICY'])
+      const actionBullets = extractSectionBullets(summary, ['ACTION', 'RECOMMENDATION', 'ENEL', 'STRATEGIC', 'REQUIRED'])
+
+      // Fallback: if any group is empty, pull from paragraphs
+      function fallbackBullets(text, skip) {
+        return text.split('\n')
+          .map(l => l.replace(/^\s*[-*]\s*/, '').replace(/\*\*/g, '').trim())
+          .filter(l => l.length > 20 && !/^#{1,4}/.test(l) && !skip.some(s => l === s))
+          .slice(0, 4)
+      }
+      const allBullets = fallbackBullets(summary, [...execBullets, ...riskBullets, ...actionBullets])
+      const exec   = execBullets.length   ? execBullets   : allBullets.slice(0, 2)
+      const risks  = riskBullets.length   ? riskBullets   : allBullets.slice(2, 4)
+      const actions = actionBullets.length ? actionBullets : allBullets.slice(4, 6)
+
+      // ── Build PPTX ───────────────────────────────────────────────────────────
+      // eslint-disable-next-line no-undef
+      const pptx = new PptxGenJS()
+      pptx.layout = 'LAYOUT_WIDE'   // 13.33" × 7.5"
+      pptx.author = 'ENEL Regulatory Affairs Research Unit'
+      pptx.company = 'ENEL S.p.A.'
+      pptx.subject = doc.title
+
+      const slide = pptx.addSlide()
+
+      // Background
+      slide.background = { color: '0a0f1e' }
+
+      // Left accent gradient bar (simulated with two rects)
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.08, h: 7.5, fill: { color: '3b82f6' } })
+
+      // ── HEADER BAR ──────────────────────────────────────────────────────────
+      // Header background
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.5 } })
+
+      // ENEL mark
+      slide.addText('✦ ENEL S.p.A.  /  Regulatory Affairs Research Unit', {
+        x: 0.2, y: 0.08, w: 7, h: 0.3,
+        fontSize: 7, bold: true, color: '93c5fd',
+        fontFace: 'Calibri', charSpacing: 1,
+      })
+
+      // Date
+      const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      slide.addText(today, {
+        x: 9.5, y: 0.08, w: 1.8, h: 0.3,
+        fontSize: 7, color: '4b5d80', align: 'right', fontFace: 'Calibri',
+      })
+
+      // INTERNAL badge
+      slide.addShape(pptx.ShapeType.rect, { x: 11.5, y: 0.1, w: 1.6, h: 0.28, fill: { color: '3d0d17' }, line: { color: '7f1d2e', width: 0.5 }, rounding: true })
+      slide.addText('INTERNAL — CONFIDENTIAL', {
+        x: 11.5, y: 0.1, w: 1.6, h: 0.28,
+        fontSize: 6, bold: true, color: 'fca5a5', align: 'center', fontFace: 'Calibri', charSpacing: 0.5,
+      })
+
+      // ── TITLE ZONE ──────────────────────────────────────────────────────────
+      // Type pill background
+      slide.addShape(pptx.ShapeType.rect, { x: 0.2, y: 0.58, w: 1.6, h: 0.22, fill: { color: '1e1040' }, line: { color: '5b21b6', width: 0.5 }, rounding: true })
+      slide.addText((doc.typeLabel || 'Publication').toUpperCase(), {
+        x: 0.2, y: 0.58, w: 1.6, h: 0.22,
+        fontSize: 6, bold: true, color: 'c4b5fd', align: 'center', fontFace: 'Calibri', charSpacing: 0.8,
+      })
+
+      // Date text
+      if (doc.date) {
+        slide.addText(formatDate(doc.date) + (doc.celex ? `  ·  ${doc.celex}` : ''), {
+          x: 2.0, y: 0.58, w: 11, h: 0.22,
+          fontSize: 7, color: '4b5d80', fontFace: 'Calibri', valign: 'middle',
+        })
+      }
+
+      // Document title — truncate to ~120 chars for slide legibility
+      const titleText = doc.title.length > 130 ? doc.title.slice(0, 127) + '…' : doc.title
+      slide.addText(titleText, {
+        x: 0.2, y: 0.85, w: 12.9, h: 0.9,
+        fontSize: 14, bold: true, color: 'FFFFFF',
+        fontFace: 'Calibri', charSpacing: -0.2,
+        wrap: true, valign: 'top',
+      })
+
+      // Separator line
+      slide.addShape(pptx.ShapeType.line, { x: 0.2, y: 1.78, w: 12.9, h: 0, line: { color: '1e2d4a', width: 0.75 } })
+
+      // ── THREE COLUMNS ────────────────────────────────────────────────────────
+      const cols = [
+        { x: 0.2,   w: 4.1, color: '3b82f6', label: 'EXECUTIVE SUMMARY',  labelColor: '93c5fd', bullets: exec },
+        { x: 4.55,  w: 4.1, color: 'f59e0b', label: 'KEY RISKS & IMPACT',  labelColor: 'fcd34d', bullets: risks },
+        { x: 8.9,   w: 4.25, color: '10b981', label: 'REQUIRED ACTIONS',  labelColor: '6ee7b7', bullets: actions },
+      ]
+
+      const colTop = 1.88
+      const colH = 4.9
+
+      cols.forEach(({ x, w, color, label, labelColor, bullets }) => {
+        // Column background
+        slide.addShape(pptx.ShapeType.rect, { x, y: colTop, w, h: colH, fill: { color: '0d1629', transparency: 40 }, line: { color: '1e2d4a', width: 0.5 } })
+
+        // Top accent bar
+        slide.addShape(pptx.ShapeType.rect, { x, y: colTop, w, h: 0.08, fill: { color } })
+
+        // Column label
+        slide.addText(label, {
+          x: x + 0.12, y: colTop + 0.12, w: w - 0.24, h: 0.28,
+          fontSize: 7, bold: true, color: labelColor,
+          fontFace: 'Calibri', charSpacing: 1.5,
+        })
+
+        // Bullet items
+        const bulletY = colTop + 0.5
+        const maxBullets = Math.min(bullets.length, 4)
+        const bulletH = (colH - 0.6) / Math.max(maxBullets, 1)
+
+        bullets.slice(0, 4).forEach((text, bi) => {
+          // Bullet dot
+          slide.addShape(pptx.ShapeType.ellipse, {
+            x: x + 0.12, y: bulletY + bi * bulletH + 0.05, w: 0.06, h: 0.06,
+            fill: { color }, line: { color, width: 0 },
+          })
+          // Bullet text
+          slide.addText(text.replace(/\*\*/g, ''), {
+            x: x + 0.24, y: bulletY + bi * bulletH, w: w - 0.36, h: bulletH,
+            fontSize: 8.5, color: 'b0c4e4',
+            fontFace: 'Calibri', wrap: true, valign: 'top',
+            paraSpaceAfter: 2,
+          })
+        })
+      })
+
+      // ── FOOTER ──────────────────────────────────────────────────────────────
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.1, w: 13.33, h: 0.4, fill: { color: '060b14' }, line: { color: '1e2d4a', width: 0.5 } })
+      slide.addText('Prepared by ENEL Regulatory Affairs Research Unit  ·  EU Energy Explorer  ·  For regulatory use only', {
+        x: 0.2, y: 7.12, w: 10, h: 0.3,
+        fontSize: 6.5, color: '2d4a7a', fontFace: 'Calibri',
+      })
+      slide.addText('1 / 1', {
+        x: 11.5, y: 7.12, w: 1.6, h: 0.3,
+        fontSize: 6.5, color: '2d4a7a', fontFace: 'Calibri', align: 'right',
+      })
+
+      await pptx.writeFile({ fileName: `enel-briefing-${doc.celex || workId.slice(0, 8)}.pptx` })
+    } catch (err) {
+      console.error('[slide export]', err)
+      alert('Slide export failed. See console for details.')
+    } finally {
+      setSlideExporting(false)
     }
   }
 
@@ -261,7 +452,27 @@ export default function LegislationDetail() {
               )}
 
               <div className="ml-auto flex items-center gap-2">
-                {/* Download */}
+                {/* Export Slide (.pptx) */}
+                <button
+                  onClick={handleExportSlide}
+                  disabled={slideExporting}
+                  title="Export McKinsey-style PowerPoint slide"
+                  className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ color: '#6ee7b7', background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.22)' }}
+                  onMouseEnter={e => { if (!slideExporting) e.currentTarget.style.background='rgba(16,185,129,0.20)' }}
+                  onMouseLeave={e => e.currentTarget.style.background='rgba(16,185,129,0.10)'}
+                >
+                  {slideExporting ? (
+                    <>
+                      <span className="h-2.5 w-2.5 rounded-full border border-emerald-400 border-t-transparent animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>▣ Export Slide</>
+                  )}
+                </button>
+
+                {/* Download .md */}
                 <button
                   onClick={() => {
                     const blob = new Blob([summary], { type: 'text/markdown' })
