@@ -72,9 +72,8 @@ export default function LegislationDetail() {
           agents: doc.agents.map(a => a.label),
         }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
       setSummary(data.summary)
       setSummaryStatus('done')
     } catch (e) {
