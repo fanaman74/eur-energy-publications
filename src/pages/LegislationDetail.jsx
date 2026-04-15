@@ -42,6 +42,7 @@ export default function LegislationDetail() {
   const [status, setStatus] = useState('loading')
   const [summary, setSummary] = useState(null)
   const [summaryStatus, setSummaryStatus] = useState('idle') // idle | loading | done | error
+  const [summaryError, setSummaryError] = useState(null)
   useDocumentTitle(doc ? doc.title.slice(0, 60) + '…' : 'EUR-Lex · Detail')
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function LegislationDetail() {
     setStatus('loading')
     setSummary(null)
     setSummaryStatus('idle')
+    setSummaryError(null)
     fetchLegislationDetail(workId, { signal: controller.signal })
       .then((d) => { setDoc(d); setStatus('done') })
       .catch((e) => { if (e.name !== 'AbortError') setStatus('error') })
@@ -76,6 +78,7 @@ export default function LegislationDetail() {
       setSummary(data.summary)
       setSummaryStatus('done')
     } catch (e) {
+      setSummaryError(e.message)
       setSummaryStatus('error')
     }
   }
@@ -174,9 +177,11 @@ export default function LegislationDetail() {
         )}
 
         {summaryStatus === 'error' && (
-          <p className="text-xs text-rose-400">
-            Summary failed — check that <code className="font-mono">OPENROUTER_API_KEY</code> is set on the server.
-          </p>
+          <div className="text-xs text-rose-400 text-center max-w-xl">
+            <p className="font-medium mb-1">Summary failed</p>
+            {summaryError && <p className="font-mono text-rose-400/70 break-all">{summaryError}</p>}
+            <button onClick={() => setSummaryStatus('idle')} className="mt-2 text-muted hover:text-text underline">Try again</button>
+          </div>
         )}
       </div>
 

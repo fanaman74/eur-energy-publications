@@ -54,6 +54,10 @@ Date: ${date || 'Unknown'}
 Subject areas: ${subjects?.join(', ') || 'Energy policy'}
 Issuing body: ${agents?.join(', ') || 'European Commission'}`
 
+    if (!process.env.OPENROUTER_API_KEY) {
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY not set on server' })
+    }
+
     const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -69,14 +73,18 @@ Issuing body: ${agents?.join(', ') || 'European Commission'}`
       }),
     })
 
+    const rawText = await upstream.text()
+    console.log(`[summarize] OpenRouter ${upstream.status}:`, rawText.slice(0, 300))
+
     if (!upstream.ok) {
-      const err = await upstream.text()
-      return res.status(502).json({ error: `OpenRouter ${upstream.status}: ${err}` })
+      return res.status(502).json({ error: `OpenRouter ${upstream.status}: ${rawText}` })
     }
 
-    const data = await upstream.json()
+    let data
+    try { data = JSON.parse(rawText) } catch { return res.status(502).json({ error: 'Invalid JSON from OpenRouter' }) }
+
     const summary = data.choices?.[0]?.message?.content?.trim()
-    if (!summary) return res.status(502).json({ error: 'Empty response from model' })
+    if (!summary) return res.status(502).json({ error: `No content in response: ${JSON.stringify(data).slice(0, 200)}` })
     res.json({ summary })
   } catch (e) {
     res.status(500).json({ error: e.message })
