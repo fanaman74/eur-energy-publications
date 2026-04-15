@@ -262,15 +262,41 @@ export default function LegislationDetail() {
       // Separator line
       slide.addShape(pptx.ShapeType.line, { x: 0.2, y: 1.78, w: 12.9, h: 0, line: { color: '1e2d4a', width: 0.75 } })
 
-      // ── THREE COLUMNS ────────────────────────────────────────────────────────
-      const cols = [
-        { x: 0.2,   w: 4.1, color: '3b82f6', label: 'EXECUTIVE SUMMARY',  labelColor: '93c5fd', bullets: exec },
-        { x: 4.55,  w: 4.1, color: 'f59e0b', label: 'KEY RISKS & IMPACT',  labelColor: 'fcd34d', bullets: risks },
-        { x: 8.9,   w: 4.25, color: '10b981', label: 'REQUIRED ACTIONS',  labelColor: '6ee7b7', bullets: actions },
-      ]
+      // ── CONTEXT STRIP (policy_signal + strategic_implication) ────────────────
+      if (slideData.context?.policy_signal || slideData.context?.strategic_implication) {
+        const ctxText = [slideData.context.policy_signal, slideData.context.strategic_implication].filter(Boolean).join('  ·  ')
+        slide.addText(ctxText, {
+          x: 0.2, y: 1.82, w: 12.9, h: 0.34,
+          fontSize: 7.5, color: '7da8d4', fontFace: 'Calibri', italic: true,
+          wrap: true, valign: 'middle',
+        })
+      }
 
-      const colTop = 1.88
-      const colH = 4.9
+      // ── THREE COLUMNS — use AI-provided labels if available ──────────────────
+      const THEME_COLORS = {
+        blue:  { color: '3b82f6', labelColor: '93c5fd' },
+        amber: { color: 'f59e0b', labelColor: 'fcd34d' },
+        green: { color: '10b981', labelColor: '6ee7b7' },
+      }
+      const colDefs = [
+        { x: 0.2,  w: 4.1  },
+        { x: 4.55, w: 4.1  },
+        { x: 8.9,  w: 4.25 },
+      ]
+      const colBullets = [exec, risks, actions]
+      const cols = slideData.columns.slice(0, 3).map((col, ci) => {
+        const theme = THEME_COLORS[col.theme] || THEME_COLORS.blue
+        return {
+          ...colDefs[ci],
+          color:      theme.color,
+          labelColor: theme.labelColor,
+          label:      col.label || '',
+          bullets:    colBullets[ci],
+        }
+      })
+
+      const colTop = slideData.context?.policy_signal ? 2.2 : 1.88
+      const colH   = slideData.context?.policy_signal ? 4.55 : 4.9
 
       cols.forEach(({ x, w, color, label, labelColor, bullets }) => {
         // Column background
@@ -306,6 +332,16 @@ export default function LegislationDetail() {
           })
         })
       })
+
+      // ── POLICY POSITIONING strip ─────────────────────────────────────────────
+      if (slideData.policy_positioning?.length) {
+        const posText = slideData.policy_positioning.join('  ·  ')
+        slide.addShape(pptx.ShapeType.rect, { x: 0.2, y: 6.82, w: 12.9, h: 0.26, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
+        slide.addText('POSITIONING  ›  ' + posText, {
+          x: 0.35, y: 6.83, w: 12.6, h: 0.24,
+          fontSize: 6.5, color: '6ee7b7', fontFace: 'Calibri', wrap: true, valign: 'middle',
+        })
+      }
 
       // ── FOOTER ──────────────────────────────────────────────────────────────
       slide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.1, w: 13.33, h: 0.4, fill: { color: '060b14' }, line: { color: '1e2d4a', width: 0.5 } })
