@@ -40,16 +40,45 @@ export default function LegislationDetail() {
   const { workId } = useParams()
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState('loading')
+  const [summary, setSummary] = useState(null)
+  const [summaryStatus, setSummaryStatus] = useState('idle') // idle | loading | done | error
   useDocumentTitle(doc ? doc.title.slice(0, 60) + '…' : 'EUR-Lex · Detail')
 
   useEffect(() => {
     const controller = new AbortController()
     setStatus('loading')
+    setSummary(null)
+    setSummaryStatus('idle')
     fetchLegislationDetail(workId, { signal: controller.signal })
       .then((d) => { setDoc(d); setStatus('done') })
       .catch((e) => { if (e.name !== 'AbortError') setStatus('error') })
     return () => controller.abort()
   }, [workId])
+
+  async function handleSummarise() {
+    if (!doc || summaryStatus === 'loading') return
+    setSummaryStatus('loading')
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: doc.title,
+          date: doc.date,
+          type: doc.typeLabel,
+          subjects: doc.subjects,
+          agents: doc.agents.map(a => a.label),
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setSummary(data.summary)
+      setSummaryStatus('done')
+    } catch (e) {
+      setSummaryStatus('error')
+    }
+  }
 
   const eurLink = doc ? eurLexUrl({ id: doc.workUri }) : null
   const opLink  = doc ? opDetailUrl({ id: doc.workUri }) : null
@@ -104,6 +133,51 @@ export default function LegislationDetail() {
         <h1 className="font-display text-2xl font-semibold text-text leading-snug">
           {doc.title}
         </h1>
+      </div>
+
+      {/* ── AI Summary ── */}
+      <div className="flex flex-col items-center gap-4 mb-10">
+        {summaryStatus !== 'done' && (
+          <button
+            onClick={handleSummarise}
+            disabled={summaryStatus === 'loading'}
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full border border-primary/40 bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 hover:border-primary/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {summaryStatus === 'loading' ? (
+              <>
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                Summarising…
+              </>
+            ) : (
+              <>
+                <span>✦</span>
+                Summarise with AI
+              </>
+            )}
+          </button>
+        )}
+
+        {summaryStatus === 'done' && summary && (
+          <div className="w-full max-w-3xl rounded-xl border border-primary/25 bg-primary/5 p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-primary text-xs">✦</span>
+              <span className="text-[10px] uppercase tracking-widest text-primary font-mono">AI Summary · Gemma via OpenRouter</span>
+            </div>
+            <p className="text-text text-sm leading-relaxed">{summary}</p>
+            <button
+              onClick={() => { setSummary(null); setSummaryStatus('idle') }}
+              className="mt-4 text-xs text-muted hover:text-text transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {summaryStatus === 'error' && (
+          <p className="text-xs text-rose-400">
+            Summary failed — check that <code className="font-mono">OPENROUTER_API_KEY</code> is set on the server.
+          </p>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
