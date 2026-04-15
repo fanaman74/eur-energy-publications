@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchPublicationDetail, fetchRelated } from '../../api/cellar'
 import { fetchOpDescription } from '../../api/opSearch'
 import { formatDate } from '../../utils/formatters'
+import BriefingNote from './BriefingNote'
 
 async function fetchAiSummary({ title, date, type, subjects, agents }) {
   const res = await fetch('/api/summarize', {
@@ -99,32 +100,50 @@ export default function PublicationSummary({ pub }) {
         </h3>
       )}
 
-      {/* Abstract */}
-      <div className="rounded-xl border border-border bg-surface p-6 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted">Abstract / Description</div>
+      {/* Abstract / Summary — rendered with BriefingNote for rich markdown output */}
+      <div className="rounded-xl overflow-hidden mb-6"
+           style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'linear-gradient(160deg, #0e1623 0%, #0a0f1c 100%)' }}>
+        {/* header bar */}
+        <div className="flex items-center gap-3 px-5 py-3"
+             style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(59,130,246,0.04)' }}>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded flex items-center justify-center text-[9px]"
+                 style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}>
+              ✦
+            </div>
+            <span className="text-[11px] font-bold text-white/70 tracking-wide">ENEL</span>
+            <span className="text-white/20 text-[10px]">/</span>
+            <span className="text-[11px] text-white/40">Publication Summary</span>
+          </div>
           {aiSummary && summaryStatus === 'done' && (
-            <span className="text-[9px] uppercase tracking-wider text-accent border border-accent/30 rounded px-1.5 py-0.5">
+            <span className={`ml-auto text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border ${
+              summarySource === 'ai'
+                ? 'text-blue-300 border-blue-400/25 bg-blue-400/8'
+                : 'text-emerald-300 border-emerald-400/25 bg-emerald-400/8'
+            }`}>
               {summarySource === 'ai' ? 'AI summary' : 'OP Search'}
             </span>
           )}
         </div>
-        {abstract ? (
-          <p className="text-text leading-relaxed text-sm">{abstract}</p>
-        ) : summaryStatus === 'loading' || status === 'loading' ? (
-          <div className="flex items-center gap-2 text-muted text-sm">
-            <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block" />
-            {status === 'loading' ? 'Loading publication data…' : 'Generating AI summary…'}
-          </div>
-        ) : summaryStatus === 'error' ? (
-          <p className="text-muted text-sm italic">
-            Summary unavailable — check that <code className="font-mono text-xs text-accent">ANTHROPIC_API_KEY</code> is set on the server.
-          </p>
-        ) : (
-          <p className="text-muted text-sm italic">
-            No description available for this publication.
-          </p>
-        )}
+        {/* body */}
+        <div className="px-6 py-5">
+          {abstract ? (
+            <BriefingNote text={abstract} />
+          ) : summaryStatus === 'loading' || status === 'loading' ? (
+            <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+              <span className="h-3 w-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin inline-block" />
+              {status === 'loading' ? 'Loading publication data…' : 'Generating AI summary…'}
+            </div>
+          ) : summaryStatus === 'error' ? (
+            <p className="text-white/30 text-sm italic py-2">
+              Summary unavailable — check that <code className="font-mono text-xs text-blue-400">ANTHROPIC_API_KEY</code> is set on the server.
+            </p>
+          ) : (
+            <p className="text-white/30 text-sm italic py-2">
+              No description available for this publication.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Key facts grid */}

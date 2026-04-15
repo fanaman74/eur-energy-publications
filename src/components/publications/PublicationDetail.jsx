@@ -9,7 +9,7 @@ export default function PublicationDetail({ pub, related = [] }) {
         <PublicationBadge type={pub.type} />
         <time className="font-mono text-xs text-muted">{formatDate(pub.date)}</time>
       </div>
-      <h1 className="font-display text-3xl md:text-4xl mb-6 leading-tight">{pub.title}</h1>
+      <h1 className="font-display mb-6 leading-snug font-semibold" style={{ fontSize: '16px' }}>{pub.title}</h1>
       {pub.abstract && <p className="text-muted mb-8 leading-relaxed">{pub.abstract}</p>}
 
       <div className="rounded-xl border border-border bg-surface overflow-hidden mb-8">
