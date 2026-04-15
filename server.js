@@ -48,6 +48,13 @@ const SUMMARY_MODELS = [
   'google/gemma-3-27b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
   'google/gemma-3-12b-it:free',
+  'openai/gpt-oss-20b:free',
+  'openai/gpt-oss-120b:free',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'google/gemma-3-4b-it:free',
 ]
 
 app.post('/api/summarize', async (req, res) => {
