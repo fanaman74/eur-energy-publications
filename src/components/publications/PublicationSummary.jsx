@@ -84,13 +84,20 @@ export default function PublicationSummary({ pub }) {
 
   return (
     <section className="mt-16 border-t border-border pt-10">
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex items-center gap-2 mb-2">
         <span className="text-accent text-lg" aria-hidden>★</span>
         <h2 className="font-display text-2xl">Publication Summary</h2>
         {status === 'loading' && (
           <span className="ml-2 h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block" />
         )}
       </div>
+
+      {/* Publication title */}
+      {pub?.title && (
+        <h3 className="font-display text-lg font-semibold text-text leading-snug mb-8 max-w-3xl">
+          {pub.title}
+        </h3>
+      )}
 
       {/* Abstract */}
       <div className="rounded-xl border border-border bg-surface p-6 mb-6">
@@ -104,14 +111,18 @@ export default function PublicationSummary({ pub }) {
         </div>
         {abstract ? (
           <p className="text-text leading-relaxed text-sm">{abstract}</p>
-        ) : summaryStatus === 'loading' ? (
+        ) : summaryStatus === 'loading' || status === 'loading' ? (
           <div className="flex items-center gap-2 text-muted text-sm">
             <span className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block" />
-            Generating summary…
+            {status === 'loading' ? 'Loading publication data…' : 'Generating AI summary…'}
           </div>
+        ) : summaryStatus === 'error' ? (
+          <p className="text-muted text-sm italic">
+            Summary unavailable — check that <code className="font-mono text-xs text-accent">ANTHROPIC_API_KEY</code> is set on the server.
+          </p>
         ) : (
           <p className="text-muted text-sm italic">
-            No abstract available for this publication.
+            No description available for this publication.
           </p>
         )}
       </div>

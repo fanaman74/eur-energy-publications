@@ -6,6 +6,42 @@ import PublicationTable from '../components/publications/PublicationTable'
 import Spinner from '../components/ui/Spinner'
 
 // ── EU Network SVG Animation (cordis-inspired, blue/cyan palette) ─────────────
+// Country shapes defined in geographic (lon, lat) space.
+// The SVG transform translate(169.6,729.4) scale(7.65,-11.1) maps them to pixel
+// space matching our city node positions (verified against known capitals).
+const EU_COUNTRIES = [
+  // Iberian Peninsula (Spain + Portugal)
+  { d: 'M-9.2,43.8 -9,37 -6,36 -1.5,36.8 0.4,38 3.2,39.5 3.3,42.4 -1.7,43.4Z', fill: '#10b981' },
+  // France
+  { d: 'M-4.7,48.4 2.5,51.1 8.2,48.8 7.5,43.6 3,42.5 -1.8,43.3Z', fill: '#3b82f6' },
+  // UK (Great Britain)
+  { d: 'M-5.5,50 -3,58.7 -1.5,58.7 -0.5,57.5 0.5,51.5 1.5,51Z', fill: '#06b6d4' },
+  // Ireland
+  { d: 'M-10,51.5 -8,55 -6.5,55.4 -6,51.5Z', fill: '#06b6d4' },
+  // Benelux + Germany (combined into one mass)
+  { d: 'M3.4,51.5 7,50.9 9.5,54.8 14.5,54.3 15,51 13.5,50.5 14.3,48.5 10.5,47.7 6.8,49.5Z', fill: '#3b82f6' },
+  // Denmark
+  { d: 'M8.1,55 8.5,57.8 10.5,57.8 12.5,56 10,55Z', fill: '#06b6d4' },
+  // Scandinavia (Norway + Sweden)
+  { d: 'M10,56 12.5,56 18,60 24.5,65 20,69.5 15,68.5 4.5,62Z', fill: '#06b6d4' },
+  // Finland
+  { d: 'M20,60 28,65 29,60 25,59 22,59.5Z', fill: '#06b6d4' },
+  // Italy (mainland, simplified boot)
+  { d: 'M7,44.1 7.5,43.9 13.5,46.5 18.5,40.5 15.6,37.9 10,38 8.5,40Z', fill: '#f59e0b' },
+  // Poland
+  { d: 'M14.5,54.3 23,54.3 24,50.5 22.5,50 18.5,49 14.5,50.5Z', fill: '#8b5cf6' },
+  // Czech + Slovakia + Austria + Hungary (central block)
+  { d: 'M12.5,51 16,51 18.5,49 22.5,48.5 22.5,46 18.5,45.5 16,46 13.5,46.5 12.5,50Z', fill: '#f59e0b' },
+  // Romania
+  { d: 'M22,48.5 30,45.5 29.5,43.7 25,43.5 22,44.5 20,46.5Z', fill: '#3b82f6' },
+  // Balkans (Serbia, Bulgaria, Croatia + neighbours)
+  { d: 'M13.5,46.5 18.5,45.5 22.5,46 22,43.5 25,43.5 26.5,40 22,36.5 19.5,39.5 19.5,42 14.5,45Z', fill: '#10b981' },
+  // Greece
+  { d: 'M19.5,42 22,41.5 26,40 26.5,37.5 22,36.5 21,38 20,39Z', fill: '#3b82f6' },
+  // Baltic states (Estonia, Latvia, Lithuania — rough block)
+  { d: 'M21,59 28.5,58.5 27,54.5 24,54 22,56Z', fill: '#8b5cf6' },
+]
+
 function EUNetworkSVG() {
   const cities = [
     ['Dublin',     108, 138],
@@ -76,6 +112,22 @@ function EUNetworkSVG() {
 
       {/* Subtle radial glow */}
       <rect width="560" height="400" fill="url(#svgBgGlow)" />
+
+      {/* Europe country fills — geographic lon/lat space transformed to SVG pixels */}
+      <g transform="translate(169.6,729.4) scale(7.65,-11.1)">
+        {EU_COUNTRIES.map((c, i) => (
+          <path
+            key={i}
+            d={c.d}
+            fill={c.fill}
+            fillOpacity="0.09"
+            stroke={c.fill}
+            strokeOpacity="0.22"
+            strokeWidth="0.09"
+            strokeLinejoin="round"
+          />
+        ))}
+      </g>
 
       {/* Connection lines */}
       {paths.map(([id, d, color]) => (

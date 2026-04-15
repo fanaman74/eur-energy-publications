@@ -43,12 +43,10 @@ const CAPITALS = [
 ]
 
 const ENERGY_COLORS = [
-  [59,  130, 246],
-  [6,   182, 212],
-  [16,  185, 129],
-  [245, 158,  11],
-  [139,  92, 246],
-  [239,  68,  68],
+  [59,  130, 246], // blue  — electricity
+  [6,   182, 212], // cyan  — wind
+  [16,  185, 129], // emerald — renewables
+  [245, 158,  11], // amber — gas
 ]
 
 function project(lat, lon, W, H) {
@@ -450,7 +448,7 @@ export default function InteractiveMap() {
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> Importing (incoming)
         </span>
-        {[['#3b82f6','Electricity'],['#06b6d4','Wind'],['#10b981','Renewables'],['#f59e0b','Gas'],['#8b5cf6','Nuclear']].map(([c,l]) => (
+        {[['#3b82f6','Electricity'],['#06b6d4','Wind'],['#10b981','Renewables'],['#f59e0b','Gas']].map(([c,l]) => (
           <span key={l} className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-px" style={{ background: c }} />{l}
           </span>
