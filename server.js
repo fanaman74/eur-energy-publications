@@ -42,27 +42,42 @@ app.get('/api/acer-rss', async (req, res) => {
   }
 })
 
-// ── Claude AI summarize ───────────────────────────────────────────────────────
+// ── AI summarize via OpenRouter (google/gemma-4-26b-a4b-it:free) ─────────────
 app.post('/api/summarize', async (req, res) => {
   try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
     const { title, date, type, subjects, agents } = req.body
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: `Write a concise 2-3 sentence factual summary for this EU energy publication based on its metadata. Do not include disclaimers — just write the summary directly.
+    const prompt = `Write a concise 2-3 sentence factual summary for this EU energy publication based on its metadata. Do not include disclaimers — just write the summary directly.
 
 Title: ${title}
 Type: ${type || 'Publication'}
 Date: ${date || 'Unknown'}
 Subject areas: ${subjects?.join(', ') || 'Energy policy'}
-Issuing body: ${agents?.join(', ') || 'European Commission'}`,
-      }],
+Issuing body: ${agents?.join(', ') || 'European Commission'}`
+
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://eu-energy-explorer.app',
+        'X-Title': 'EU Energy Explorer',
+      },
+      body: JSON.stringify({
+        model: 'google/gemma-3-27b-it:free',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     })
-    res.json({ summary: message.content[0].text })
+
+    if (!upstream.ok) {
+      const err = await upstream.text()
+      return res.status(502).json({ error: `OpenRouter ${upstream.status}: ${err}` })
+    }
+
+    const data = await upstream.json()
+    const summary = data.choices?.[0]?.message?.content?.trim()
+    if (!summary) return res.status(502).json({ error: 'Empty response from model' })
+    res.json({ summary })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
