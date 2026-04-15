@@ -10,6 +10,7 @@ import About from './pages/About'
 import Remit from './pages/Remit'
 import EurLex from './pages/EurLex'
 import LegislationDetail from './pages/LegislationDetail'
+import InteractiveMap from './pages/InteractiveMap'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
                 <Route path="/remit" element={<Remit />} />
                 <Route path="/eur-lex" element={<EurLex />} />
                 <Route path="/eur-lex/:workId" element={<LegislationDetail />} />
+                <Route path="/map" element={<InteractiveMap />} />
                 <Route path="/about" element={<About />} />
               </Routes>
             </main>

@@ -20,6 +20,7 @@ export default function Header() {
           <NavLink to="/browse" className={link}>Browse</NavLink>
           <NavLink to="/remit" className={link}>REMIT</NavLink>
           <NavLink to="/eur-lex" className={link}>EUR-Lex</NavLink>
+          <NavLink to="/map" className={link}>Map</NavLink>
           <NavLink to="/about" className={link}>About</NavLink>
         </nav>
       </div>
