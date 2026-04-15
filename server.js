@@ -512,7 +512,7 @@ app.post('/api/summarize', async (req, res) => {
       })
 
       const rawText = await upstream.text()
-      console.log(`[summarize] ${model} → ${upstream.status}`)
+      console.log(`[summarize] ${model} → ${upstream.status} | body: ${rawText.slice(0, 300)}`)
 
       if (!upstream.ok) {
         lastError = `${model}: HTTP ${upstream.status}`
