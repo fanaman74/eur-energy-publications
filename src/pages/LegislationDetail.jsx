@@ -795,53 +795,6 @@ export default function LegislationDetail() {
             </a>
           </div>
 
-          {/* Quick stats */}
-          <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
-            <div className="text-[10px] uppercase tracking-widest text-muted font-mono">At a glance</div>
-
-            <div>
-              <div className="text-[10px] text-muted mb-1">Type</div>
-              <Pill cls={typeCls}>{doc.typeLabel}</Pill>
-            </div>
-
-            {doc.celex && (
-              <div>
-                <div className="text-[10px] text-muted mb-1">CELEX</div>
-                <div className="font-mono text-sm text-text">{doc.celex}</div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-[10px] text-muted mb-1">Document date</div>
-              <div className="font-mono text-sm text-text">{formatDate(doc.date)}</div>
-            </div>
-
-            {doc.entryIntoForce && (
-              <div>
-                <div className="text-[10px] text-muted mb-1">In force from</div>
-                <div className="font-mono text-sm text-emerald-400">{formatDate(doc.entryIntoForce)}</div>
-              </div>
-            )}
-
-            {doc.endOfValidity && (
-              <div>
-                <div className="text-[10px] text-muted mb-1">Valid until</div>
-                <div className="font-mono text-sm text-rose-400">{formatDate(doc.endOfValidity)}</div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-[10px] text-muted mb-1">Available languages</div>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {doc.languages.length > 0
-                  ? doc.languages.map(l => (
-                      <span key={l} className="text-[10px] font-mono border border-border rounded px-1.5 py-0.5 text-muted">{l}</span>
-                    ))
-                  : <span className="text-muted text-xs">—</span>
-                }
-              </div>
-            </div>
-          </div>
 
           {/* Back link */}
           <Link
