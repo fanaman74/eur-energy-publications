@@ -367,6 +367,17 @@ app.post('/api/slide-content', async (req, res) => {
   res.status(502).json({ error: lastError })
 })
 
+// Check that retrieved text actually contains legislative article content.
+// EUR-Lex can return metadata/summary pages that pass length checks but
+// don't contain the actual article body — this guards against that.
+function hasArticleContent(text) {
+  // Legislative text contains numbered articles (Article 1, Art. 1, ARTICLE I, etc.)
+  // Recitals are a strong secondary signal (Whereas / Having regard)
+  const hasArticles = /\bArticle\s+\d+\b/i.test(text) || /\bArt\.\s*\d+\b/.test(text)
+  const hasRecitals = /\bWhereas\b|\bHaving regard\b|\bRecital\b/i.test(text)
+  return hasArticles || hasRecitals
+}
+
 // Chunk a long document on Article boundaries to stay within context limits
 function chunkDocument(text, maxChars = 120000) {
   if (text.length <= maxChars) return [text]
@@ -404,6 +415,14 @@ app.post('/api/summarize', async (req, res) => {
       fullText = await fetchEurLexFullText(celex)
     }
     if (!fullText && clientFullText) fullText = clientFullText
+
+    // Validate: if the fetched text doesn't contain recognisable article content
+    // (no "Article N" / recital patterns), it's a metadata/summary page — discard
+    // it so we fall through to abstract or metadata-only mode honestly.
+    if (fullText && !hasArticleContent(fullText)) {
+      console.log(`[summarize] fetched text (${fullText.length} chars) contains no article content — discarding, falling back to abstract`)
+      fullText = null
+    }
 
     // Build the user message following the prompt's metadata-prepend guidance
     let textSource, userMessage
