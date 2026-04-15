@@ -118,8 +118,8 @@ function BriefingNote({ text }) {
     // ── blank line ────────────────────────────────────────────────────────────
     if (trimmed === '') { nodes.push(<div key={`sp${i}`} className="h-1" />); i++; continue }
 
-    // ── noise lines: ---, ___, bare #, 📋 alone ──────────────────────────────
-    if (/^[-_*]{2,}$/.test(trimmed) || /^#{1,4}$/.test(trimmed) || trimmed === '📋') { i++; continue }
+    // ── noise lines: ---, ___, bare #, lone -, 📋 alone ─────────────────────
+    if (/^[-_*]{1,}$/.test(trimmed) || /^#{1,4}$/.test(trimmed) || trimmed === '📋') { i++; continue }
 
     // ── REGULATORY BRIEFING NOTE banner (any heading level) ──────────────────
     if (/^#{1,4}\s+.*REGULATORY BRIEFING NOTE/i.test(line)) {
@@ -235,9 +235,10 @@ function BriefingNote({ text }) {
     if (/^(\s*)[-*]\s/.test(line)) {
       const baseIndent = line.match(/^(\s*)/)[1].length
       const items = []
-      while (i < lines.length && /^(\s*)[-*]\s/.test(lines[i])) {
+      while (i < lines.length && /^(\s*)[-*]\s*/.test(lines[i])) {
         const ind = lines[i].match(/^(\s*)/)[1].length
-        items.push({ t: lines[i].replace(/^\s*[-*]\s/, ''), lvl: Math.round((ind - baseIndent) / 2) })
+        const t = lines[i].replace(/^\s*[-*]\s*/, '').trim()
+        if (t) items.push({ t, lvl: Math.round((ind - baseIndent) / 2) })
         i++
       }
       nodes.push(
