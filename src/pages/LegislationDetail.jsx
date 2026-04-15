@@ -118,11 +118,11 @@ function BriefingNote({ text }) {
     // ── blank line ────────────────────────────────────────────────────────────
     if (trimmed === '') { nodes.push(<div key={`sp${i}`} className="h-1" />); i++; continue }
 
-    // ── horizontal rule — skip ───────────────────────────────────────────────
-    if (/^---+$/.test(trimmed)) { i++; continue }
+    // ── noise lines: ---, ___, bare #, 📋 alone ──────────────────────────────
+    if (/^[-_*]{2,}$/.test(trimmed) || /^#{1,4}$/.test(trimmed) || trimmed === '📋') { i++; continue }
 
-    // ── REGULATORY BRIEFING NOTE banner ──────────────────────────────────────
-    if (/^###?\s+.*REGULATORY BRIEFING NOTE/i.test(line)) {
+    // ── REGULATORY BRIEFING NOTE banner (any heading level) ──────────────────
+    if (/^#{1,4}\s+.*REGULATORY BRIEFING NOTE/i.test(line)) {
       nodes.push(
         <div key={`bnr${i}`} className="mb-8 pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="flex items-center gap-3 mb-3">
@@ -144,44 +144,42 @@ function BriefingNote({ text }) {
       i++; continue
     }
 
-    // ── Numbered section heading ### N. TITLE ─────────────────────────────────
-    if (/^###\s/.test(line)) {
-      const title = line.replace(/^###\s*/, '').replace(/^📋\s*/, '').trim()
+    // ── Any heading level (#, ##, ###, ####) → section block ─────────────────
+    if (/^#{1,4}\s/.test(line)) {
+      const title = line.replace(/^#{1,4}\s*/, '').replace(/^📋\s*/, '').trim()
       const numMatch = title.match(/^(\d+)\.?\s+/)
       const num = numMatch ? parseInt(numMatch[1]) - 1 : 0
-      const acc = SECTION_ACCENTS[num % SECTION_ACCENTS.length]
-      nodes.push(
-        <div key={`sec${i}`} className="mt-10 mb-4 flex items-stretch gap-0 rounded-lg overflow-hidden"
-             style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-          {/* coloured left bar */}
-          <div className="w-1 shrink-0 rounded-l-lg" style={{ background: acc.bar }} />
-          {/* section label */}
-          <div className="flex items-center gap-3 px-4 py-3 flex-1" style={{ background: acc.bg }}>
-            {numMatch && (
-              <span className={`text-[22px] font-black leading-none ${acc.num} opacity-30 font-mono`}>
-                {numMatch[1]}
+      const acc = SECTION_ACCENTS[Math.max(0, num) % SECTION_ACCENTS.length]
+      // sub-headings (####) rendered smaller
+      const isSubHead = /^####/.test(line)
+      if (isSubHead) {
+        nodes.push(
+          <h4 key={`h4${i}`} className="text-[11px] font-bold uppercase tracking-widest text-white/50 mt-5 mb-2">
+            <R t={title} />
+          </h4>
+        )
+      } else {
+        nodes.push(
+          <div key={`sec${i}`} className="mt-10 mb-4 flex items-stretch gap-0 rounded-lg overflow-hidden"
+               style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="w-1 shrink-0 rounded-l-lg" style={{ background: acc.bar }} />
+            <div className="flex items-center gap-3 px-4 py-3 flex-1" style={{ background: acc.bg }}>
+              {numMatch && (
+                <span className={`text-[22px] font-black leading-none ${acc.num} opacity-30 font-mono`}>
+                  {numMatch[1]}
+                </span>
+              )}
+              <span className="text-xs font-bold uppercase tracking-widest text-white/80">
+                {title.replace(/^\d+\.?\s*/, '')}
               </span>
-            )}
-            <span className="text-xs font-bold uppercase tracking-widest text-white/80">
-              {title.replace(/^\d+\.?\s*/, '')}
-            </span>
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
       i++; continue
     }
 
-    // ── H4 provision sub-heading **[Art X] — Title** ─────────────────────────
-    if (/^####\s/.test(line)) {
-      nodes.push(
-        <h4 key={`h4${i}`} className="text-[11px] font-bold uppercase tracking-widest text-white/50 mt-5 mb-2">
-          <R t={line.replace(/^####\s*/, '')} />
-        </h4>
-      )
-      i++; continue
-    }
-
-    // ── H2 ───────────────────────────────────────────────────────────────────
+    // ── H2 (kept as fallback for any ## that slipped through) ────────────────
     if (/^##\s/.test(line)) {
       nodes.push(
         <h2 key={`h2${i}`} className="text-sm font-bold text-white/90 mt-6 mb-2 pb-1"
@@ -366,9 +364,10 @@ export default function LegislationDetail() {
       console.log('[summary] first 200 chars:', JSON.stringify(raw.slice(0, 200)))
       const normalised = raw
         .replace(/\r\n/g, '\n')
-        .replace(/(?<!\n)(#{1,4}\s)/g, '\n$1')      // ensure newline before any heading
+        .replace(/(?<!\n)(#{1,4} )/g, '\n$1')        // ensure newline before any heading
         .replace(/(?<!\n)(\*\*[A-Z][^*]{0,40}:\*\*)/g, '\n$1') // ensure newline before **Key:** pairs
         .replace(/\n{3,}/g, '\n\n')                  // collapse excessive blank lines
+        .trim()
       setSummary(normalised)
       setSummaryModel(data.model || null)
       setSummarySource(data.source || null)
