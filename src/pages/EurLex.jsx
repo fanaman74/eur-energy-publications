@@ -21,8 +21,10 @@ const TYPE_COLOR = {
 }
 
 const DEBOUNCE_MS = 400
-const DEFAULT_YEAR = '2020'
+const DEFAULT_YEAR = '2026'
 const YEAR_OPTIONS = Array.from({ length: new Date().getFullYear() - 2009 }, (_, i) => 2010 + i).reverse()
+
+
 
 export default function EurLex() {
   useDocumentTitle('EUR-Lex · EU Legislation')
@@ -31,7 +33,7 @@ export default function EurLex() {
   const [query, setQuery]       = useState(searchParams.get('q')    || '')
   const [typeKey, setTypeKey]   = useState(searchParams.get('type') || '')
   const [bodyKey, setBodyKey]   = useState(searchParams.get('body') || '')
-  const [dateFrom, setDateFrom] = useState(searchParams.get('from') || DEFAULT_YEAR)
+  const [dateFrom, setDateFrom] = useState(DEFAULT_YEAR)
   const [docs, setDocs]         = useState([])
   const [status, setStatus]     = useState('idle')
   const debounceRef = useRef(null)
