@@ -67,7 +67,7 @@ Issuing body: ${agents?.join(', ') || 'European Commission'}`
         'X-Title': 'EU Energy Explorer',
       },
       body: JSON.stringify({
-        model: 'google/gemma-2-9b-it:free',
+        model: 'google/gemma-4-26b-a4b-it:free',
         max_tokens: 300,
         messages: [{ role: 'user', content: prompt }],
       }),
