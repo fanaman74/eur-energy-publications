@@ -245,6 +245,27 @@ export default function BriefingNote({ text }) {
       continue
     }
 
+    // ── **Bold key:** value lines (KV_EXCLUDE group) → bulleted with blue dot ──
+    // These are inline KV pairs like "**What it requires:** ..." that should
+    // render consistently with the rest of the bullet list, not as bare paragraphs.
+    if (/^\*\*[^*]+:\*\*/.test(trimmed)) {
+      const items = []
+      while (i < lines.length && /^\*\*[^*]+:\*\*/.test(lines[i].trim())) {
+        items.push(lines[i].trim()); i++
+      }
+      nodes.push(
+        <ul key={`kvb${i}`} className="my-1.5 space-y-2">
+          {items.map((item, ii) => (
+            <li key={ii} className="flex gap-3 text-[13px] text-white/72 leading-relaxed">
+              <span className="shrink-0 mt-[7px] w-1.5 h-1.5 rounded-full" style={{ background: '#3b82f6', flexShrink: 0 }} />
+              <span><R t={item} /></span>
+            </li>
+          ))}
+        </ul>
+      )
+      continue
+    }
+
     // ── Paragraph ─────────────────────────────────────────────────────────────
     nodes.push(
       <p key={`p${i}`} className="text-[13px] text-white/72 leading-[1.75] my-2">
