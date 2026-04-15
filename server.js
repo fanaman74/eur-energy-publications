@@ -58,15 +58,10 @@ app.get('/api/acer-rss', async (req, res) => {
 
 // ── AI summarize via OpenRouter — tries models in order until one succeeds ────
 const SUMMARY_MODELS = [
-  'google/gemma-3-27b-it:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-3-12b-it:free',
-  'mistralai/mistral-7b-instruct:free',
-  'nousresearch/hermes-3-llama-3.1-405b:free',
-  'meta-llama/llama-3.1-8b-instruct:free',
-  'qwen/qwen-2.5-72b-instruct:free',
-  'deepseek/deepseek-r1-distill-llama-70b:free',
-  'microsoft/phi-3-medium-128k-instruct:free',
+  'google/gemma-4-26b-a4b-it:free',   // confirmed free, 262K ctx
+  'google/gemma-4-31b-it:free',        // confirmed free, 262K ctx
+  'nvidia/nemotron-3-super-120b-a12b:free', // confirmed free, 262K ctx
+  'openrouter/elephant-alpha',          // confirmed free, 256K ctx
 ]
 
 function stripHtml(html) {
