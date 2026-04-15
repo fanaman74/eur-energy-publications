@@ -448,7 +448,7 @@ export default function LegislationDetail() {
             {formatDate(doc.date)}
           </span>
         </div>
-        <h1 className="font-display text-2xl font-semibold text-text leading-snug">
+        <h1 className="font-display text-base font-semibold text-text leading-snug">
           {doc.title}
         </h1>
       </div>
