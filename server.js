@@ -379,7 +379,7 @@ function hasArticleContent(text) {
 }
 
 // Chunk a long document on Article boundaries to stay within context limits
-function chunkDocument(text, maxChars = 120000) {
+function chunkDocument(text, maxChars = 800000) {
   if (text.length <= maxChars) return [text]
   const parts = text.split(/(?=Article \d+)/i)
   const chunks = []
