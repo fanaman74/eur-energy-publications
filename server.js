@@ -143,7 +143,7 @@ async function fetchManifest(abs, headers) {
   return text
 }
 
-async function fetchLegislativeFullText(workId, browserHeaders = CELLAR_HEADERS) {
+async function fetchLegislativeFullText(workId, celex, browserHeaders = CELLAR_HEADERS) {
   const base = `https://publications.europa.eu/resource/cellar/${workId}`
   // Merge caller-supplied headers over the safe defaults
   const headers = { ...CELLAR_HEADERS, ...browserHeaders }
@@ -180,7 +180,13 @@ async function fetchLegislativeFullText(workId, browserHeaders = CELLAR_HEADERS)
     }
   } catch (e) { console.log(`[fulltext] discovery error: ${e.message}`) }
 
-  if (!choiceLinks.length) { console.log('[fulltext] no choice links — cannot retrieve full text'); return null }
+  if (!choiceLinks.length) {
+    console.log('[fulltext] no choice links — trying EUR-Lex fallback')
+    const eurLexText = await fetchEurLexFullText(celex)
+    if (eurLexText) { console.log(`[fulltext] ✓ EUR-Lex fallback (no choices) ${eurLexText.length} chars`); return eurLexText }
+    console.log('[fulltext] EUR-Lex fallback also failed — no content available')
+    return null
+  }
 
   const toAbs = (l) => l.startsWith('http') ? l : `https://publications.europa.eu${l}`
   // Exclude pure metadata/RDF endpoints; include everything else
@@ -203,7 +209,49 @@ async function fetchLegislativeFullText(workId, browserHeaders = CELLAR_HEADERS)
     if (text) { console.log(`[fulltext] ✓ ${text.length} chars from ${link.split('/').slice(-2).join('/')}`); return text }
   }
 
-  console.log('[fulltext] all candidates exhausted — no content available')
+  console.log('[fulltext] all candidates exhausted — trying EUR-Lex fallback')
+  const eurLexText = await fetchEurLexFullText(celex)
+  if (eurLexText) {
+    console.log(`[fulltext] ✓ EUR-Lex fallback succeeded (${eurLexText.length} chars)`)
+    return eurLexText
+  }
+  console.log('[fulltext] EUR-Lex fallback also failed — no content available')
+  return null
+}
+
+// ── EUR-Lex direct fallback — fetches full text by CELEX number ───────────────
+// Used when CELLAR content negotiation returns no usable links.
+// EUR-Lex /TXT/HTML/ endpoint reliably returns the consolidated HTML text.
+async function fetchEurLexFullText(celex) {
+  if (!celex) return null
+  const urls = [
+    `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
+    `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:${encodeURIComponent(celex)}`,
+  ]
+  for (const url of urls) {
+    try {
+      console.log(`[fulltext-eurlex] trying ${url}`)
+      const res = await fetch(url, {
+        headers: {
+          ...CELLAR_HEADERS,
+          Accept: 'text/html,application/xhtml+xml,*/*;q=0.9',
+          Referer: 'https://eur-lex.europa.eu/',
+        },
+        signal: AbortSignal.timeout(20000),
+        redirect: 'follow',
+      })
+      console.log(`[fulltext-eurlex] → ${res.status} ct=${(res.headers.get('content-type') || '').slice(0, 40)}`)
+      if (!res.ok) continue
+      const html = await res.text()
+      if (isWafPage(html)) { console.log('[fulltext-eurlex] → WAF page'); continue }
+      const text = stripHtml(html)
+      if (text.length < 300) { console.log(`[fulltext-eurlex] → too short (${text.length})`); continue }
+      console.log(`[fulltext-eurlex] ✓ ${text.length} chars`)
+      return text
+    } catch (e) {
+      console.log(`[fulltext-eurlex] error: ${e.message}`)
+    }
+  }
   return null
 }
 
@@ -349,8 +397,11 @@ app.post('/api/summarize', async (req, res) => {
     // then abstract, then metadata-only.
     let fullText = null
     if (workId) {
-      console.log(`[summarize] fetching full text for ${workId}`)
-      fullText = await fetchLegislativeFullText(workId)
+      console.log(`[summarize] fetching full text for ${workId} (celex: ${celex || 'unknown'})`)
+      fullText = await fetchLegislativeFullText(workId, celex)
+    } else if (celex) {
+      console.log(`[summarize] no workId — trying EUR-Lex directly for ${celex}`)
+      fullText = await fetchEurLexFullText(celex)
     }
     if (!fullText && clientFullText) fullText = clientFullText
 
