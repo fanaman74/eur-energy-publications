@@ -71,6 +71,7 @@ export default function LegislationDetail() {
           type: doc.typeLabel,
           subjects: doc.subjects,
           agents: doc.agents.map(a => a.label),
+          eurLexUrl: eurLink,
         }),
       })
       const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))

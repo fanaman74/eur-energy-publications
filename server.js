@@ -57,13 +57,48 @@ const SUMMARY_MODELS = [
   'google/gemma-3-4b-it:free',
 ]
 
+// Fetch and strip EUR-Lex HTML to plain text (server-side, avoids CORS)
+async function fetchEurLexText(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EU-Energy-Explorer/1.0)' },
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/\s+/g, ' ').trim()
+    return text.length > 200 ? text.slice(0, 7000) : null
+  } catch { return null }
+}
+
 app.post('/api/summarize', async (req, res) => {
   if (!process.env.OPENROUTER_API_KEY) {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY not set on server' })
   }
   try {
-    const { title, date, type, subjects, agents } = req.body
-    const prompt = `Write a concise 2-3 sentence factual summary for this EU energy publication based on its metadata. Do not include disclaimers — just write the summary directly.
+    const { title, date, type, subjects, agents, eurLexUrl } = req.body
+
+    // Try to fetch the full legal text from EUR-Lex
+    let fullText = null
+    if (eurLexUrl) {
+      fullText = await fetchEurLexText(eurLexUrl)
+      console.log(`[summarize] EUR-Lex text: ${fullText?.length ?? 0} chars`)
+    }
+
+    const prompt = fullText
+      ? `Summarise the following EU legislative text in 3-5 sentences. Focus on what it requires or establishes, who it affects, and its key provisions. Write directly — no disclaimers, no preamble.
+
+${fullText}`
+      : `Write a concise 2-3 sentence factual summary for this EU energy publication based on its metadata. Do not include disclaimers — just write the summary directly.
 
 Title: ${title}
 Type: ${type || 'Publication'}
