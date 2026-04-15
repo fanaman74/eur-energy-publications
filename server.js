@@ -58,17 +58,15 @@ app.get('/api/acer-rss', async (req, res) => {
 
 // ── AI summarize via OpenRouter — tries models in order until one succeeds ────
 const SUMMARY_MODELS = [
-  'google/gemma-4-26b-a4b-it:free',
   'google/gemma-3-27b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
   'google/gemma-3-12b-it:free',
-  'openai/gpt-oss-20b:free',
-  'openai/gpt-oss-120b:free',
+  'mistralai/mistral-7b-instruct:free',
   'nousresearch/hermes-3-llama-3.1-405b:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-  'nvidia/nemotron-3-super-120b-a12b:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'google/gemma-3-4b-it:free',
+  'meta-llama/llama-3.1-8b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+  'deepseek/deepseek-r1-distill-llama-70b:free',
+  'microsoft/phi-3-medium-128k-instruct:free',
 ]
 
 function stripHtml(html) {
@@ -494,12 +492,16 @@ app.post('/api/summarize', async (req, res) => {
 
     console.log(`[summarize] source: ${textSource}`)
 
+    const apiKey = (process.env.OPENROUTER_API_KEY || '').trim()
+    console.log(`[summarize] API key prefix: ${apiKey.slice(0, 12)}... (len=${apiKey.length})`)
+    if (!apiKey) return res.status(500).json({ error: 'OPENROUTER_API_KEY missing' })
+
     let lastError = 'All models failed'
     for (const model of SUMMARY_MODELS) {
       const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://eu-energy-explorer.app',
           'X-Title': 'EU Energy Explorer',
