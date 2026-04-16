@@ -143,23 +143,29 @@ async function fetchManifest(abs, headers) {
   return text
 }
 
-async function fetchLegislativeFullText(workId, celex) {
+async function fetchLegislativeFullText(workId, celex, lang = 'ENG') {
+  // Map lang code to Accept-Language and EUR-Lex path segment
+  const LANG_MAP = {
+    ITA: { acceptLang: 'it,it-IT;q=0.9,en;q=0.5', eurLexLang: 'IT' },
+    ENG: { acceptLang: 'en,en-GB;q=0.9',           eurLexLang: 'EN' },
+  }
+  const { acceptLang, eurLexLang } = LANG_MAP[lang] || LANG_MAP.ENG
+
   // ── Strategy 1: CELLAR proper content negotiation ─────────────────────────
-  // Send Accept: application/xhtml+xml + Accept-Language: en to the CELLAR
+  // Send Accept: application/xhtml+xml + Accept-Language header to the CELLAR
   // resource URI. CELLAR returns HTTP 303 See Other with a Location header
-  // pointing directly to the English XHTML manifestation. Follow the redirect
-  // and read the content. This is the documented CELLAR REST behaviour.
+  // pointing directly to the requested-language XHTML manifestation.
   if (workId) {
     const cellarBase = `https://publications.europa.eu/resource/cellar/${workId}`
     for (const acceptType of ['application/xhtml+xml', 'text/html', 'application/pdf']) {
       try {
-        console.log(`[fulltext] CELLAR 303 probe (${acceptType}) → ${cellarBase}`)
+        console.log(`[fulltext] CELLAR 303 probe (${acceptType}, ${lang}) → ${cellarBase}`)
         const probe = await fetch(cellarBase, {
           method: 'GET',
           headers: {
             ...CELLAR_HEADERS,
             'Accept': acceptType,
-            'Accept-Language': 'en,en-GB;q=0.9',
+            'Accept-Language': acceptLang,
           },
           signal: AbortSignal.timeout(15000),
           redirect: 'manual',   // capture 303 Location without following blindly
@@ -183,7 +189,7 @@ async function fetchLegislativeFullText(workId, celex) {
 
         if (contentUrl) {
           const docRes = await fetch(contentUrl, {
-            headers: { ...CELLAR_HEADERS, 'Accept-Language': 'en,en-GB;q=0.9' },
+            headers: { ...CELLAR_HEADERS, 'Accept-Language': acceptLang },
             signal: AbortSignal.timeout(25000),
             redirect: 'follow',
           })
@@ -222,13 +228,13 @@ async function fetchLegislativeFullText(workId, celex) {
   // EUR-Lex accepts ?uri=CELLAR:{uuid} and reliably serves the full text HTML
   // for most document types including internal Commission acts.
   if (workId) {
-    const eurLexByCellar = await fetchEurLexFullText(null, workId)
+    const eurLexByCellar = await fetchEurLexFullText(null, workId, eurLexLang)
     if (eurLexByCellar) return eurLexByCellar
   }
 
   // ── Strategy 3: EUR-Lex by CELEX number ──────────────────────────────────
   if (celex) {
-    const eurLexByCelex = await fetchEurLexFullText(celex, null)
+    const eurLexByCelex = await fetchEurLexFullText(celex, null, eurLexLang)
     if (eurLexByCelex) return eurLexByCelex
   }
 
@@ -239,14 +245,15 @@ async function fetchLegislativeFullText(workId, celex) {
 // ── EUR-Lex direct fallback — fetches full text by CELEX number ───────────────
 // Used when CELLAR content negotiation returns no usable links.
 // EUR-Lex /TXT/HTML/ endpoint reliably returns the consolidated HTML text.
-async function fetchEurLexFullText(celex, cellarUuid) {
+async function fetchEurLexFullText(celex, cellarUuid, eurLang = 'EN') {
   if (!celex && !cellarUuid) return null
+  const L = eurLang.toUpperCase()
   const urls = [
     // CELLAR UUID takes priority — works for Commission acts not indexed by CELEX
-    cellarUuid ? `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(cellarUuid)}` : null,
-    celex      ? `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`       : null,
-    cellarUuid ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELLAR:${encodeURIComponent(cellarUuid)}`      : null,
-    celex      ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:${encodeURIComponent(celex)}`            : null,
+    cellarUuid ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/HTML/?uri=CELLAR:${encodeURIComponent(cellarUuid)}` : null,
+    celex      ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`       : null,
+    cellarUuid ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/?uri=CELLAR:${encodeURIComponent(cellarUuid)}`      : null,
+    celex      ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/?uri=CELEX:${encodeURIComponent(celex)}`            : null,
   ].filter(Boolean)
   for (const url of urls) {
     try {
@@ -646,22 +653,13 @@ app.get('/api/atom-feed', async (req, res) => {
 // Returns { text, chars, source } or 404 { error }.
 app.get('/api/fulltext/:workId', async (req, res) => {
   const { workId } = req.params
+  const lang = (req.query.lang || 'ENG').toUpperCase()  // ENG or ITA
+  const celex = req.query.celex || null
   if (!workId || workId.length < 10) return res.status(400).json({ error: 'Invalid workId' })
-  console.log(`[fulltext] starting fetch for ${workId}`)
-  // Forward browser fingerprint headers so publications.europa.eu accepts the request
-  const browserHeaders = {
-    'User-Agent':          req.headers['user-agent'] || '',
-    'Accept-Language':     req.headers['accept-language'] || 'en-GB,en;q=0.9',
-    'sec-ch-ua':           req.headers['sec-ch-ua'] || '',
-    'sec-ch-ua-mobile':    req.headers['sec-ch-ua-mobile'] || '',
-    'sec-ch-ua-platform':  req.headers['sec-ch-ua-platform'] || '',
-    'Sec-Fetch-Dest':      'document',
-    'Sec-Fetch-Mode':      'navigate',
-    'Sec-Fetch-Site':      'cross-site',
-  }
-  const text = await fetchLegislativeFullText(workId, browserHeaders)
+  console.log(`[fulltext] starting fetch for ${workId} lang=${lang}`)
+  const text = await fetchLegislativeFullText(workId, celex, lang)
   if (!text) return res.status(404).json({ error: 'Full text not available from CELLAR.' })
-  res.json({ text, chars: text.length })
+  res.json({ text, chars: text.length, lang })
 })
 
 // ── Cross-border electricity flows — Energy-Charts API (Fraunhofer ISE, free) ──

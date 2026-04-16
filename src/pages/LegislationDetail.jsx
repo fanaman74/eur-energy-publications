@@ -828,23 +828,44 @@ export default function LegislationDetail() {
                   <div className="flex flex-wrap gap-1.5">
                     {doc.languages.map(l => {
                       const isEngFullText = l === 'ENG' && summarySource === 'Full text'
-                      return (
+                      const isClickable = l === 'ENG' || l === 'ITA'
+                      const badge = (
                         <span
                           key={l}
-                          title={isEngFullText ? 'Full text retrieved' : undefined}
-                          className="text-[10px] font-mono rounded px-1.5 py-0.5"
+                          title={
+                            isClickable
+                              ? `Open full ${l === 'ENG' ? 'English' : 'Italian'} document`
+                              : isEngFullText ? 'Full text retrieved' : undefined
+                          }
+                          className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${isClickable ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
                           style={isEngFullText ? {
                             border: '1px solid rgba(239,68,68,0.5)',
                             background: 'rgba(239,68,68,0.12)',
                             color: '#fca5a5',
+                          } : isClickable ? {
+                            border: l === 'ITA' ? '1px solid rgba(134,239,172,0.35)' : '1px solid rgba(147,197,253,0.35)',
+                            background: l === 'ITA' ? 'rgba(134,239,172,0.08)' : 'rgba(147,197,253,0.08)',
+                            color: l === 'ITA' ? '#86efac' : '#93c5fd',
                           } : {
                             border: '1px solid var(--border)',
                             color: 'var(--muted)',
                           }}
-                        >{l}</span>
+                        >
+                          {l === 'ITA' ? '🇮🇹 ' : l === 'ENG' ? '🇬🇧 ' : ''}{l}
+                        </span>
                       )
+                      return isClickable ? (
+                        <Link key={l} to={`/eur-lex/${workId}/text/${l}`}>
+                          {badge}
+                        </Link>
+                      ) : badge
                     })}
                   </div>
+                  {(doc.languages.includes('ENG') || doc.languages.includes('ITA')) && (
+                    <p className="mt-1.5 text-[10px] text-white/20 font-mono">
+                      Click 🇬🇧 ENG or 🇮🇹 ITA to open full document reader
+                    </p>
+                  )}
                 </MetaRow>
               )}
 
