@@ -387,67 +387,86 @@ app.post('/api/slide-content', async (req, res) => {
   res.status(502).json({ error: lastError })
 })
 
-// ── Full-text availability probe ─────────────────────────────────────────────
-// Lightweight HEAD-only check — does not download the document body.
-// Returns { available: bool, source: 'CELLAR'|'EUR-Lex (UUID)'|'EUR-Lex (CELEX)'|null }
-app.get('/api/fulltext-check', async (req, res) => {
-  const { workId, celex } = req.query
-  if (!workId && !celex) return res.json({ available: false, source: null })
-
-  // 1. CELLAR 303 HEAD probe
-  if (workId) {
-    try {
-      const probe = await fetch(`https://publications.europa.eu/resource/cellar/${workId}`, {
-        method: 'HEAD',
-        headers: { ...CELLAR_HEADERS, Accept: 'application/xhtml+xml', 'Accept-Language': 'en,en-GB;q=0.9' },
-        signal: AbortSignal.timeout(8000),
-        redirect: 'manual',
-      })
-      if (probe.status === 303 || probe.status === 302) {
-        const loc = probe.headers.get('location') || ''
-        // Exclude pure RDF/metadata redirects
-        if (loc && !loc.includes('/rdf/object') && !loc.endsWith('.rdf')) {
-          return res.json({ available: true, source: 'CELLAR' })
-        }
-      }
-    } catch { /* continue */ }
-  }
-
-  // 2. EUR-Lex HEAD probe by CELLAR UUID
-  if (workId) {
-    try {
-      const r = await fetch(
-        `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(workId)}`,
-        { method: 'HEAD', headers: CELLAR_HEADERS, signal: AbortSignal.timeout(8000), redirect: 'follow' }
-      )
-      if (r.ok) return res.json({ available: true, source: 'EUR-Lex' })
-    } catch { /* continue */ }
-  }
-
-  // 3. EUR-Lex HEAD probe by CELEX
-  if (celex) {
-    try {
-      const r = await fetch(
-        `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
-        { method: 'HEAD', headers: CELLAR_HEADERS, signal: AbortSignal.timeout(8000), redirect: 'follow' }
-      )
-      if (r.ok) return res.json({ available: true, source: 'EUR-Lex' })
-    } catch { /* continue */ }
-  }
-
-  res.json({ available: false, source: null })
-})
-
 // Check that retrieved text actually contains legislative article content.
 // EUR-Lex can return metadata/summary pages that pass length checks but
 // don't contain the actual article body — this guards against that.
 function hasArticleContent(text) {
-  // Legislative text contains numbered articles (Article 1, Art. 1, ARTICLE I, etc.)
-  // Recitals are a strong secondary signal (Whereas / Having regard)
   const hasArticles = /\bArticle\s+\d+\b/i.test(text) || /\bArt\.\s*\d+\b/.test(text)
   const hasRecitals = /\bWhereas\b|\bHaving regard\b|\bRecital\b/i.test(text)
   return hasArticles || hasRecitals
 }
+
+// Fetch the first 80 KB of a URL and check it contains article content.
+// Uses Range header where supported; falls back to reading the full response
+// but aborts as soon as we have enough bytes.
+async function probeUrlForArticles(url, extraHeaders = {}) {
+  try {
+    const r = await fetch(url, {
+      headers: { ...CELLAR_HEADERS, ...extraHeaders, Range: 'bytes=0-81919' },
+      signal: AbortSignal.timeout(12000),
+      redirect: 'follow',
+    })
+    if (!r.ok) return false
+    const ct = r.headers.get('content-type') || ''
+    // Skip binary/RDF formats
+    if (ct.includes('pdf') || ct.includes('rdf') || ct.includes('sparql')) return false
+    const raw = await r.text()
+    const text = (ct.includes('html') || raw.trimStart().startsWith('<')) ? stripHtml(raw) : raw
+    return hasArticleContent(text)
+  } catch { return false }
+}
+
+// ── Full-text availability probe ─────────────────────────────────────────────
+// Does a real partial GET (first 80 KB) and runs hasArticleContent — same
+// check as the summarize pipeline — so the result is trustworthy.
+// Returns { available: bool, source: 'CELLAR'|'EUR-Lex'|null }
+app.get('/api/fulltext-check', async (req, res) => {
+  const { workId, celex } = req.query
+  if (!workId && !celex) return res.json({ available: false, source: null })
+
+  // 1. CELLAR 303 → follow Location → partial GET + article check
+  if (workId) {
+    try {
+      const probe = await fetch(`https://publications.europa.eu/resource/cellar/${workId}`, {
+        method: 'GET',
+        headers: { ...CELLAR_HEADERS, Accept: 'application/xhtml+xml', 'Accept-Language': 'en,en-GB;q=0.9' },
+        signal: AbortSignal.timeout(10000),
+        redirect: 'manual',
+      })
+      if (probe.status === 303 || probe.status === 302) {
+        const loc = probe.headers.get('location') || ''
+        if (loc && !loc.includes('/rdf/object') && !loc.endsWith('.rdf')) {
+          const ok = await probeUrlForArticles(loc)
+          if (ok) return res.json({ available: true, source: 'CELLAR' })
+        }
+      } else if (probe.ok) {
+        const raw = await probe.text()
+        const text = stripHtml(raw)
+        if (hasArticleContent(text)) return res.json({ available: true, source: 'CELLAR' })
+      }
+    } catch { /* continue */ }
+  }
+
+  // 2. EUR-Lex by CELLAR UUID
+  if (workId) {
+    const ok = await probeUrlForArticles(
+      `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(workId)}`,
+      { Referer: 'https://eur-lex.europa.eu/' }
+    )
+    if (ok) return res.json({ available: true, source: 'EUR-Lex' })
+  }
+
+  // 3. EUR-Lex by CELEX
+  if (celex) {
+    const ok = await probeUrlForArticles(
+      `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
+      { Referer: 'https://eur-lex.europa.eu/' }
+    )
+    if (ok) return res.json({ available: true, source: 'EUR-Lex' })
+  }
+
+  res.json({ available: false, source: null })
+})
 
 // Chunk a long document on Article boundaries to stay within context limits
 function chunkDocument(text, maxChars = 800000) {
