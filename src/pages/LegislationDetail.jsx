@@ -54,6 +54,11 @@ export default function LegislationDetail() {
   const [fullText, setFullText] = useState(null)
   const [fullTextStatus, setFullTextStatus] = useState('idle')
   const [fullTextOpen, setFullTextOpen] = useState(false)
+
+  // Availability probe — runs once doc metadata loads, before user clicks Summarise
+  const [ftAvail, setFtAvail] = useState(null)   // null=checking, true/false, or 'error'
+  const [ftAvailSource, setFtAvailSource] = useState(null)
+
   useDocumentTitle(doc ? doc.title.slice(0, 60) + '…' : 'EUR-Lex · Detail')
 
   useEffect(() => {
@@ -65,11 +70,29 @@ export default function LegislationDetail() {
     setFullText(null)
     setFullTextStatus('idle')
     setFullTextOpen(false)
+    setFtAvail(null)
+    setFtAvailSource(null)
     fetchLegislationDetail(workId, { signal: controller.signal })
       .then((d) => { setDoc(d); setStatus('done') })
       .catch((e) => { if (e.name !== 'AbortError') setStatus('error') })
     return () => controller.abort()
   }, [workId])
+
+  // Once doc metadata is available, quietly probe for full-text availability
+  useEffect(() => {
+    if (!doc) return
+    const id = doc.workUri?.split('/').pop() || workId
+    const celex = doc.celex || null
+    if (!id && !celex) { setFtAvail(false); return }
+    const params = new URLSearchParams()
+    if (id) params.set('workId', id)
+    if (celex) params.set('celex', celex)
+    setFtAvail(null)  // checking
+    fetch(`/api/fulltext-check?${params}`)
+      .then(r => r.json())
+      .then(data => { setFtAvail(data.available); setFtAvailSource(data.source || null) })
+      .catch(() => setFtAvail(false))
+  }, [doc])
 
   async function handleSummarise() {
     if (!doc || summaryStatus === 'loading') return
@@ -466,6 +489,30 @@ export default function LegislationDetail() {
             {summaryError || 'Summary failed.'}{' '}
             <button onClick={() => setSummaryStatus('idle')} className="underline hover:text-rose-300">Try again</button>
           </p>
+        )}
+
+        {/* Full-text availability indicator */}
+        {summaryStatus === 'idle' && (
+          <div className="flex items-center gap-1.5 text-[11px] font-mono">
+            {ftAvail === null && (
+              <>
+                <span className="h-2 w-2 rounded-full border border-white/20 border-t-transparent animate-spin" />
+                <span className="text-white/25">checking full text…</span>
+              </>
+            )}
+            {ftAvail === true && (
+              <>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 5px #ef4444', display: 'inline-block' }} />
+                <span style={{ color: '#fca5a5' }}>Full text available{ftAvailSource ? ` · ${ftAvailSource}` : ''} — analysis will be complete</span>
+              </>
+            )}
+            {ftAvail === false && (
+              <>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', opacity: 0.7 }} />
+                <span className="text-amber-400/70">Full text unavailable — summary based on abstract or metadata only</span>
+              </>
+            )}
+          </div>
         )}
       </div>
 

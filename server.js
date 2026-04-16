@@ -387,6 +387,57 @@ app.post('/api/slide-content', async (req, res) => {
   res.status(502).json({ error: lastError })
 })
 
+// ── Full-text availability probe ─────────────────────────────────────────────
+// Lightweight HEAD-only check — does not download the document body.
+// Returns { available: bool, source: 'CELLAR'|'EUR-Lex (UUID)'|'EUR-Lex (CELEX)'|null }
+app.get('/api/fulltext-check', async (req, res) => {
+  const { workId, celex } = req.query
+  if (!workId && !celex) return res.json({ available: false, source: null })
+
+  // 1. CELLAR 303 HEAD probe
+  if (workId) {
+    try {
+      const probe = await fetch(`https://publications.europa.eu/resource/cellar/${workId}`, {
+        method: 'HEAD',
+        headers: { ...CELLAR_HEADERS, Accept: 'application/xhtml+xml', 'Accept-Language': 'en,en-GB;q=0.9' },
+        signal: AbortSignal.timeout(8000),
+        redirect: 'manual',
+      })
+      if (probe.status === 303 || probe.status === 302) {
+        const loc = probe.headers.get('location') || ''
+        // Exclude pure RDF/metadata redirects
+        if (loc && !loc.includes('/rdf/object') && !loc.endsWith('.rdf')) {
+          return res.json({ available: true, source: 'CELLAR' })
+        }
+      }
+    } catch { /* continue */ }
+  }
+
+  // 2. EUR-Lex HEAD probe by CELLAR UUID
+  if (workId) {
+    try {
+      const r = await fetch(
+        `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(workId)}`,
+        { method: 'HEAD', headers: CELLAR_HEADERS, signal: AbortSignal.timeout(8000), redirect: 'follow' }
+      )
+      if (r.ok) return res.json({ available: true, source: 'EUR-Lex' })
+    } catch { /* continue */ }
+  }
+
+  // 3. EUR-Lex HEAD probe by CELEX
+  if (celex) {
+    try {
+      const r = await fetch(
+        `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
+        { method: 'HEAD', headers: CELLAR_HEADERS, signal: AbortSignal.timeout(8000), redirect: 'follow' }
+      )
+      if (r.ok) return res.json({ available: true, source: 'EUR-Lex' })
+    } catch { /* continue */ }
+  }
+
+  res.json({ available: false, source: null })
+})
+
 // Check that retrieved text actually contains legislative article content.
 // EUR-Lex can return metadata/summary pages that pass length checks but
 // don't contain the actual article body — this guards against that.
