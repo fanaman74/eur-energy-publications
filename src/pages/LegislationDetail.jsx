@@ -138,12 +138,11 @@ export default function LegislationDetail() {
     }
   }
 
-  // ── PowerPoint slide export ──────────────────────────────────────────────────
+  // ── PowerPoint multi-slide deck export ──────────────────────────────────────
   async function handleExportSlide() {
     if (slideExporting || !summary || !doc) return
     setSlideExporting(true)
     try {
-      // Load pptxgenjs from CDN on demand
       if (!window.PptxGenJS) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script')
@@ -153,234 +152,272 @@ export default function LegislationDetail() {
         })
       }
 
-      // ── Ask AI to structure slide content from the briefing note ─────────────
-      let slideData = null
+      // ── AI-structured deck content ───────────────────────────────────────────
+      let deckData = null
       try {
         const aiRes = await fetch('/api/slide-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            summary,
-            title: doc.title,
-            date: doc.date,
-            type: doc.typeLabel,
-            celex: doc.celex || null,
-          }),
+          body: JSON.stringify({ summary, title: doc.title, date: doc.date, type: doc.typeLabel, celex: doc.celex || null }),
         })
         if (aiRes.ok) {
           const aiJson = await aiRes.json()
-          slideData = aiJson.slide || null
+          const raw = aiJson.slide || null
+          // Accept new multi-slide format { deck, slides[] } or old flat format
+          if (raw?.slides) deckData = raw
+          else if (raw) deckData = { deck: raw, slides: [{ id: 1, type: 'executive_overview', ...raw }] }
         }
-      } catch (e) {
-        console.warn('[slide-content] AI call failed, falling back to regex parse:', e.message)
-      }
+      } catch (e) { console.warn('[slide-content] AI call failed:', e.message) }
 
-      // ── Regex fallback if AI call fails ──────────────────────────────────────
-      if (!slideData) {
-        function extractSectionBullets(text, keywords) {
-          const lines = text.split('\n')
-          const result = []
-          let inSection = false
+      // ── Regex fallback ───────────────────────────────────────────────────────
+      if (!deckData) {
+        function extractBullets(text, keywords) {
+          const lines = text.split('\n'); const result = []; let inS = false
           for (const t of lines.map(l => l.trim())) {
-            if (/^#{1,4}\s/.test(t)) {
-              const heading = t.replace(/^#{1,4}\s*/, '').toUpperCase()
-              inSection = keywords.some(k => heading.includes(k.toUpperCase()))
-              continue
-            }
-            if (inSection) {
-              const bullet = t.replace(/^\s*[-*]\s*/, '').replace(/^\*\*([^*]+):\*\*\s*/, '').replace(/\*\*/g, '').trim()
-              if (bullet && bullet.length > 10) result.push(bullet)
-            }
+            if (/^#{1,4}\s/.test(t)) { inS = keywords.some(k => t.toUpperCase().includes(k)); continue }
+            if (inS) { const b = t.replace(/^\s*[-*]\s*/, '').replace(/^\*\*[^*]+:\*\*\s*/, '').replace(/\*\*/g, '').trim(); if (b.length > 10) result.push(b) }
           }
-          return result.slice(0, 4)
+          return result.slice(0, 5)
         }
-        const exec    = extractSectionBullets(summary, ['EXECUTIVE', 'OVERVIEW', 'SUMMARY'])
-        const risks   = extractSectionBullets(summary, ['RISK', 'IMPACT', 'LEGAL', 'COMPLIANCE'])
-        const actions = extractSectionBullets(summary, ['ACTION', 'RECOMMENDATION', 'ENEL', 'STRATEGIC', 'REQUIRED'])
-        slideData = {
-          title: doc.title,
-          subtitle: `${doc.typeLabel || 'Publication'} · ${formatDate(doc.date)}${doc.celex ? ' · ' + doc.celex : ''}`,
-          issuing_body: doc.agents?.map(a => a.label).join(', ') || '',
-          relevance: 'MEDIUM', urgency: 'MONITOR',
-          columns: [
-            { label: 'EXECUTIVE SUMMARY', theme: 'blue',  bullets: exec.length   ? exec   : ['See full briefing note for details.'] },
-            { label: 'KEY RISKS & IMPACT', theme: 'amber', bullets: risks.length  ? risks  : ['Review full briefing note.'] },
-            { label: 'REQUIRED ACTIONS',  theme: 'green', bullets: actions.length ? actions : ['Consult Regulatory Affairs team.'] },
-          ],
-          footer_note: '',
+        deckData = {
+          deck: { title: doc.title, subtitle: `${doc.typeLabel || 'Publication'} · ${formatDate(doc.date)}`, issuing_body: doc.agents?.map(a => a.label).join(', ') || '', relevance: 'MEDIUM', urgency: 'MONITOR' },
+          slides: [{
+            id: 1, type: 'executive_overview', title: 'Executive Overview', footer_note: '',
+            context: { policy_signal: '', strategic_implication: '' },
+            columns: [
+              { label: 'WHAT IS CHANGING', theme: 'blue',  bullets: extractBullets(summary, ['EXECUTIVE', 'OVERVIEW', 'SUMMARY']) || ['See briefing note.'] },
+              { label: 'IMPACT ON ENEL',   theme: 'amber', bullets: extractBullets(summary, ['RISK', 'IMPACT', 'COMPLIANCE'])     || ['Review briefing note.'] },
+              { label: 'ENEL RESPONSE',    theme: 'green', bullets: extractBullets(summary, ['ACTION', 'RECOMMENDATION', 'ENEL']) || ['Consult Regulatory Affairs.'] },
+            ],
+          }],
         }
       }
 
-      const exec    = slideData.columns[0]?.bullets || []
-      const risks   = slideData.columns[1]?.bullets || []
-      const actions = slideData.columns[2]?.bullets || []
-
-      // ── Build PPTX ───────────────────────────────────────────────────────────
       // eslint-disable-next-line no-undef
       const pptx = new PptxGenJS()
-      pptx.layout = 'LAYOUT_WIDE'   // 13.33" × 7.5"
+      pptx.layout = 'LAYOUT_WIDE'
       pptx.author = 'ENEL Regulatory Affairs Research Unit'
       pptx.company = 'ENEL S.p.A.'
       pptx.subject = doc.title
 
-      const slide = pptx.addSlide()
-
-      // Background
-      slide.background = { color: '0a0f1e' }
-
-      // Left accent gradient bar (simulated with two rects)
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.08, h: 7.5, fill: { color: '3b82f6' } })
-
-      // ── HEADER BAR ──────────────────────────────────────────────────────────
-      // Header background
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.5 } })
-
-      // ENEL mark
-      slide.addText('✦ ENEL S.p.A.  /  Regulatory Affairs Research Unit', {
-        x: 0.2, y: 0.08, w: 7, h: 0.3,
-        fontSize: 7, bold: true, color: '93c5fd',
-        fontFace: 'Calibri', charSpacing: 1,
-      })
-
-      // Date
       const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      slide.addText(today, {
-        x: 9.5, y: 0.08, w: 1.8, h: 0.3,
-        fontSize: 7, color: '4b5d80', align: 'right', fontFace: 'Calibri',
-      })
+      const deck  = deckData.deck || {}
+      const slides = deckData.slides || []
+      const totalSlides = slides.length
+      const COLORS = { blue: { bar: '3b82f6', lbl: '93c5fd' }, amber: { bar: 'f59e0b', lbl: 'fcd34d' }, green: { bar: '10b981', lbl: '6ee7b7' }, red: { bar: 'ef4444', lbl: 'fca5a5' }, violet: { bar: '8b5cf6', lbl: 'c4b5fd' } }
+      const SEVERITY_COLORS = { HIGH: 'ef4444', MEDIUM: 'f59e0b', LOW: '10b981', NONE: '374151' }
+      const PRIORITY_COLORS = { HIGH: 'ef4444', MEDIUM: 'f59e0b', LOW: '10b981' }
 
-      // INTERNAL badge
-      slide.addShape(pptx.ShapeType.rect, { x: 11.5, y: 0.1, w: 1.6, h: 0.28, fill: { color: '3d0d17' }, line: { color: '7f1d2e', width: 0.5 }, rounding: true })
-      slide.addText('INTERNAL — CONFIDENTIAL', {
-        x: 11.5, y: 0.1, w: 1.6, h: 0.28,
-        fontSize: 6, bold: true, color: 'fca5a5', align: 'center', fontFace: 'Calibri', charSpacing: 0.5,
-      })
-
-      // ── TITLE ZONE ──────────────────────────────────────────────────────────
-      // Type pill background
-      slide.addShape(pptx.ShapeType.rect, { x: 0.2, y: 0.58, w: 1.6, h: 0.22, fill: { color: '1e1040' }, line: { color: '5b21b6', width: 0.5 }, rounding: true })
-      slide.addText((doc.typeLabel || 'Publication').toUpperCase(), {
-        x: 0.2, y: 0.58, w: 1.6, h: 0.22,
-        fontSize: 6, bold: true, color: 'c4b5fd', align: 'center', fontFace: 'Calibri', charSpacing: 0.8,
-      })
-
-      // Date text
-      if (doc.date) {
-        slide.addText(formatDate(doc.date) + (doc.celex ? `  ·  ${doc.celex}` : ''), {
-          x: 2.0, y: 0.58, w: 11, h: 0.22,
-          fontSize: 7, color: '4b5d80', fontFace: 'Calibri', valign: 'middle',
-        })
+      // ── Shared helpers ───────────────────────────────────────────────────────
+      function addHeader(sl, slideNum, accentColor = '3b82f6') {
+        sl.background = { color: '0a0f1e' }
+        sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.08, h: 7.5, fill: { color: accentColor } })
+        sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.5 } })
+        sl.addText('✦ ENEL S.p.A.  /  Regulatory Affairs Research Unit', { x: 0.2, y: 0.08, w: 7, h: 0.3, fontSize: 7, bold: true, color: '93c5fd', fontFace: 'Calibri', charSpacing: 1 })
+        sl.addText(today, { x: 9.5, y: 0.08, w: 1.8, h: 0.3, fontSize: 7, color: '4b5d80', align: 'right', fontFace: 'Calibri' })
+        sl.addShape(pptx.ShapeType.rect, { x: 11.5, y: 0.1, w: 1.6, h: 0.28, fill: { color: '3d0d17' }, line: { color: '7f1d2e', width: 0.5 } })
+        sl.addText('INTERNAL — CONFIDENTIAL', { x: 11.5, y: 0.1, w: 1.6, h: 0.28, fontSize: 6, bold: true, color: 'fca5a5', align: 'center', fontFace: 'Calibri' })
+        // Type pill + date reference
+        sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: 0.58, w: 1.6, h: 0.22, fill: { color: '1e1040' }, line: { color: '5b21b6', width: 0.5 } })
+        sl.addText((doc.typeLabel || 'Publication').toUpperCase(), { x: 0.2, y: 0.58, w: 1.6, h: 0.22, fontSize: 6, bold: true, color: 'c4b5fd', align: 'center', fontFace: 'Calibri' })
+        if (doc.date) sl.addText(formatDate(doc.date) + (doc.celex ? `  ·  ${doc.celex}` : ''), { x: 2.0, y: 0.58, w: 10.8, h: 0.22, fontSize: 7, color: '4b5d80', fontFace: 'Calibri' })
+        // Deck title
+        const t = (deck.title || doc.title).slice(0, 130)
+        sl.addText(t, { x: 0.2, y: 0.85, w: 12.9, h: 0.9, fontSize: 13, bold: true, color: 'FFFFFF', fontFace: 'Calibri', wrap: true, valign: 'top' })
+        sl.addShape(pptx.ShapeType.line, { x: 0.2, y: 1.78, w: 12.9, h: 0, line: { color: '1e2d4a', width: 0.75 } })
+        return 1.85  // content starts here
       }
 
-      // Document title — use AI-rewritten title if available, else original
-      const rawTitle = slideData.title || doc.title
-      const titleText = rawTitle.length > 130 ? rawTitle.slice(0, 127) + '…' : rawTitle
-      slide.addText(titleText, {
-        x: 0.2, y: 0.85, w: 12.9, h: 0.9,
-        fontSize: 14, bold: true, color: 'FFFFFF',
-        fontFace: 'Calibri', charSpacing: -0.2,
-        wrap: true, valign: 'top',
-      })
-
-      // Separator line
-      slide.addShape(pptx.ShapeType.line, { x: 0.2, y: 1.78, w: 12.9, h: 0, line: { color: '1e2d4a', width: 0.75 } })
-
-      // ── CONTEXT STRIP (policy_signal + strategic_implication) ────────────────
-      if (slideData.context?.policy_signal || slideData.context?.strategic_implication) {
-        const ctxText = [slideData.context.policy_signal, slideData.context.strategic_implication].filter(Boolean).join('  ·  ')
-        slide.addText(ctxText, {
-          x: 0.2, y: 1.82, w: 12.9, h: 0.34,
-          fontSize: 7.5, color: '7da8d4', fontFace: 'Calibri', italic: true,
-          wrap: true, valign: 'middle',
-        })
+      function addFooter(sl, slideNum, footerNote, relevance, urgency) {
+        sl.addShape(pptx.ShapeType.rect, { x: 0, y: 7.1, w: 13.33, h: 0.4, fill: { color: '060b14' }, line: { color: '1e2d4a', width: 0.5 } })
+        sl.addText(footerNote || 'Prepared by ENEL Regulatory Affairs Research Unit  ·  EU Energy Explorer', { x: 0.2, y: 7.12, w: 10.2, h: 0.3, fontSize: 6.5, color: footerNote ? 'fcd34d' : '2d4a7a', fontFace: 'Calibri' })
+        sl.addText(`${relevance || deck.relevance || ''}  ·  ${urgency || deck.urgency || ''}  ·  ${slideNum} / ${totalSlides}`, { x: 10.4, y: 7.12, w: 2.7, h: 0.3, fontSize: 6, color: '2d4a7a', fontFace: 'Calibri', align: 'right' })
       }
 
-      // ── THREE COLUMNS — use AI-provided labels if available ──────────────────
-      const THEME_COLORS = {
-        blue:  { color: '3b82f6', labelColor: '93c5fd' },
-        amber: { color: 'f59e0b', labelColor: 'fcd34d' },
-        green: { color: '10b981', labelColor: '6ee7b7' },
+      function addSlideTitle(sl, title, accentColor = '3b82f6', y = 1.9) {
+        sl.addShape(pptx.ShapeType.rect, { x: 0.15, y, w: 0.05, h: 0.26, fill: { color: accentColor } })
+        sl.addText(title || '', { x: 0.3, y, w: 12.8, h: 0.28, fontSize: 11, bold: true, color: 'e2e8f0', fontFace: 'Calibri' })
+        return y + 0.35
       }
-      const colDefs = [
-        { x: 0.2,  w: 4.1  },
-        { x: 4.55, w: 4.1  },
-        { x: 8.9,  w: 4.25 },
-      ]
-      const colBullets = [exec, risks, actions]
-      const cols = slideData.columns.slice(0, 3).map((col, ci) => {
-        const theme = THEME_COLORS[col.theme] || THEME_COLORS.blue
-        return {
-          ...colDefs[ci],
-          color:      theme.color,
-          labelColor: theme.labelColor,
-          label:      col.label || '',
-          bullets:    colBullets[ci],
+
+      // ── Build each slide ─────────────────────────────────────────────────────
+      slides.forEach((sd, idx) => {
+        const sl = pptx.addSlide()
+        const slideNum = idx + 1
+        const type = sd.type || 'executive_overview'
+
+        // ── Slide 1: Executive Overview ────────────────────────────────────────
+        if (type === 'executive_overview') {
+          addHeader(sl, slideNum, '3b82f6')
+          let contentY = 1.85
+          if (sd.context?.policy_signal || sd.context?.strategic_implication) {
+            const ctx = [sd.context.policy_signal, sd.context.strategic_implication].filter(Boolean).join('  ·  ')
+            sl.addText(ctx, { x: 0.2, y: contentY, w: 12.9, h: 0.36, fontSize: 7.5, color: '7da8d4', fontFace: 'Calibri', italic: true, wrap: true })
+            contentY += 0.38
+          }
+          const cols = (sd.columns || []).slice(0, 3)
+          const colDefs = [{ x: 0.2, w: 4.1 }, { x: 4.55, w: 4.1 }, { x: 8.9, w: 4.25 }]
+          const colH = 7.05 - contentY - 0.3
+          cols.forEach((col, ci) => {
+            const { x, w } = colDefs[ci]
+            const tc = COLORS[col.theme] || COLORS.blue
+            const bullets = col.bullets || []
+            sl.addShape(pptx.ShapeType.rect, { x, y: contentY, w, h: colH, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.5 } })
+            sl.addShape(pptx.ShapeType.rect, { x, y: contentY, w, h: 0.07, fill: { color: tc.bar } })
+            sl.addText(col.label || '', { x: x + 0.12, y: contentY + 0.1, w: w - 0.2, h: 0.26, fontSize: 6.5, bold: true, color: tc.lbl, fontFace: 'Calibri', charSpacing: 1.2 })
+            const bY = contentY + 0.44; const maxB = Math.min(bullets.length, 8)
+            const bH = (colH - 0.52) / Math.max(maxB, 1)
+            bullets.slice(0, 8).forEach((txt, bi) => {
+              sl.addShape(pptx.ShapeType.ellipse, { x: x + 0.12, y: bY + bi * bH + 0.055, w: 0.055, h: 0.055, fill: { color: tc.bar } })
+              sl.addText(txt.replace(/\*\*/g, ''), { x: x + 0.22, y: bY + bi * bH, w: w - 0.34, h: bH, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'top' })
+            })
+          })
+          if (sd.policy_positioning?.length) {
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: 7.06, w: 12.9, h: 0.22, fill: { color: '0a1a12' }, line: { color: '064e3b', width: 0.4 } })
+            sl.addText('POSITIONING  ›  ' + sd.policy_positioning.join('  ·  '), { x: 0.32, y: 7.07, w: 12.6, h: 0.2, fontSize: 6, color: '6ee7b7', fontFace: 'Calibri', wrap: true })
+          }
+          addFooter(sl, slideNum, sd.footer_note, deck.relevance, deck.urgency)
         }
-      })
 
-      const colTop = slideData.context?.policy_signal ? 2.2 : 1.88
-      const colH   = slideData.context?.policy_signal ? 4.55 : 4.9
-
-      cols.forEach(({ x, w, color, label, labelColor, bullets }) => {
-        // Column background
-        slide.addShape(pptx.ShapeType.rect, { x, y: colTop, w, h: colH, fill: { color: '0d1629', transparency: 40 }, line: { color: '1e2d4a', width: 0.5 } })
-
-        // Top accent bar
-        slide.addShape(pptx.ShapeType.rect, { x, y: colTop, w, h: 0.08, fill: { color } })
-
-        // Column label
-        slide.addText(label, {
-          x: x + 0.12, y: colTop + 0.12, w: w - 0.24, h: 0.28,
-          fontSize: 7, bold: true, color: labelColor,
-          fontFace: 'Calibri', charSpacing: 1.5,
-        })
-
-        // Bullet items
-        const bulletY = colTop + 0.5
-        const maxBullets = Math.min(bullets.length, 4)
-        const bulletH = (colH - 0.6) / Math.max(maxBullets, 1)
-
-        bullets.slice(0, 4).forEach((text, bi) => {
-          // Bullet dot
-          slide.addShape(pptx.ShapeType.ellipse, {
-            x: x + 0.12, y: bulletY + bi * bulletH + 0.05, w: 0.06, h: 0.06,
-            fill: { color }, line: { color, width: 0 },
+        // ── Slide 2: Regulatory Deep Dive ─────────────────────────────────────
+        else if (type === 'regulatory_deep_dive') {
+          addHeader(sl, slideNum, '8b5cf6')
+          let y = addSlideTitle(sl, sd.title || 'Regulatory Deep Dive', '8b5cf6')
+          const sections = sd.sections || []
+          const sectionH = Math.min((7.0 - y) / Math.max(sections.length, 1), 1.6)
+          sections.forEach((sec, si) => {
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + si * sectionH, w: 12.9, h: sectionH - 0.06, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + si * sectionH, w: 12.9, h: 0.06, fill: { color: '8b5cf6' } })
+            sl.addText(sec.heading || '', { x: 0.35, y: y + si * sectionH + 0.1, w: 12.6, h: 0.22, fontSize: 8.5, bold: true, color: 'c4b5fd', fontFace: 'Calibri' })
+            sl.addText((sec.body || '').replace(/\*\*/g, ''), { x: 0.35, y: y + si * sectionH + 0.34, w: 12.6, h: sectionH - 0.44, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'top' })
           })
-          // Bullet text
-          slide.addText(text.replace(/\*\*/g, ''), {
-            x: x + 0.24, y: bulletY + bi * bulletH, w: w - 0.36, h: bulletH,
-            fontSize: 8.5, color: 'b0c4e4',
-            fontFace: 'Calibri', wrap: true, valign: 'top',
-            paraSpaceAfter: 2,
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
+
+        // ── Slide 3: ENEL Impact Analysis ─────────────────────────────────────
+        else if (type === 'enel_impact_analysis') {
+          addHeader(sl, slideNum, 'f59e0b')
+          let y = addSlideTitle(sl, sd.title || 'ENEL Impact Analysis', 'f59e0b')
+          const impacts = sd.impacts || []
+          const rowH = Math.min((7.05 - y) / Math.max(impacts.length, 1), 1.1)
+          impacts.forEach((imp, ii) => {
+            const sColor = SEVERITY_COLORS[imp.severity] || '374151'
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + ii * rowH, w: 12.9, h: rowH - 0.05, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
+            // Severity badge
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + ii * rowH, w: 2.0, h: rowH - 0.05, fill: { color: sColor, transparency: 85 } })
+            sl.addText(imp.domain || '', { x: 0.3, y: y + ii * rowH + 0.08, w: 1.8, h: 0.22, fontSize: 7.5, bold: true, color: 'e2e8f0', fontFace: 'Calibri', wrap: true })
+            sl.addShape(pptx.ShapeType.rect, { x: 0.3, y: y + ii * rowH + 0.32, w: 0.9, h: 0.18, fill: { color: sColor }, line: { color: sColor, width: 0 } })
+            sl.addText(imp.severity || '', { x: 0.3, y: y + ii * rowH + 0.32, w: 0.9, h: 0.18, fontSize: 6, bold: true, color: '000000', align: 'center', fontFace: 'Calibri' })
+            sl.addText((imp.detail || '').replace(/\*\*/g, ''), { x: 2.3, y: y + ii * rowH + 0.08, w: 10.6, h: rowH - 0.16, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'top' })
           })
-        })
-      })
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
 
-      // ── POLICY POSITIONING strip ─────────────────────────────────────────────
-      if (slideData.policy_positioning?.length) {
-        const posText = slideData.policy_positioning.join('  ·  ')
-        slide.addShape(pptx.ShapeType.rect, { x: 0.2, y: 6.82, w: 12.9, h: 0.26, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
-        slide.addText('POSITIONING  ›  ' + posText, {
-          x: 0.35, y: 6.83, w: 12.6, h: 0.24,
-          fontSize: 6.5, color: '6ee7b7', fontFace: 'Calibri', wrap: true, valign: 'middle',
-        })
-      }
+        // ── Slide 4: Strategic Response ───────────────────────────────────────
+        else if (type === 'strategic_response') {
+          addHeader(sl, slideNum, '10b981')
+          let y = addSlideTitle(sl, sd.title || 'Strategic Response', '10b981')
+          const actions = sd.actions || []
+          const rowH = Math.min((7.05 - y) / Math.max(actions.length, 1), 0.85)
+          actions.forEach((act, ai) => {
+            const pColor = PRIORITY_COLORS[act.priority] || '374151'
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + ai * rowH, w: 12.9, h: rowH - 0.04, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
+            // Priority badge
+            sl.addShape(pptx.ShapeType.rect, { x: 0.22, y: y + ai * rowH + 0.1, w: 0.7, h: 0.2, fill: { color: pColor } })
+            sl.addText(act.priority || '', { x: 0.22, y: y + ai * rowH + 0.1, w: 0.7, h: 0.2, fontSize: 5.5, bold: true, color: '000000', align: 'center', fontFace: 'Calibri' })
+            // Department
+            sl.addText(act.department || '', { x: 1.05, y: y + ai * rowH + 0.08, w: 2.4, h: 0.24, fontSize: 7.5, bold: true, color: '6ee7b7', fontFace: 'Calibri' })
+            // Action
+            sl.addText((act.action || '').replace(/\*\*/g, ''), { x: 3.55, y: y + ai * rowH + 0.06, w: 8.1, h: rowH - 0.12, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+            // Deadline
+            sl.addText(act.deadline || '', { x: 11.7, y: y + ai * rowH + 0.08, w: 1.25, h: 0.22, fontSize: 6.5, color: 'fcd34d', fontFace: 'Calibri', align: 'right' })
+          })
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
 
-      // ── FOOTER ──────────────────────────────────────────────────────────────
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.1, w: 13.33, h: 0.4, fill: { color: '060b14' }, line: { color: '1e2d4a', width: 0.5 } })
-      // AI footer note (key deadline / compliance point) or attribution fallback
-      const footerLeft = slideData.footer_note
-        ? slideData.footer_note
-        : 'Prepared by ENEL Regulatory Affairs Research Unit  ·  EU Energy Explorer  ·  For regulatory use only'
-      slide.addText(footerLeft, {
-        x: 0.2, y: 7.12, w: 10.5, h: 0.3,
-        fontSize: 6.5, color: slideData.footer_note ? 'fcd34d' : '2d4a7a', fontFace: 'Calibri',
-      })
-      // Relevance + urgency badge
-      const badge = `${slideData.relevance || ''}  ·  ${slideData.urgency || ''}  ·  1 / 1`
-      slide.addText(badge, {
-        x: 10.5, y: 7.12, w: 2.6, h: 0.3,
-        fontSize: 6, color: '2d4a7a', fontFace: 'Calibri', align: 'right',
+        // ── Slide 5: Policy Positioning ───────────────────────────────────────
+        else if (type === 'policy_positioning') {
+          addHeader(sl, slideNum, '3b82f6')
+          let y = addSlideTitle(sl, sd.title || 'Policy Positioning & Advocacy', '3b82f6')
+          // Stance block
+          sl.addShape(pptx.ShapeType.rect, { x: 0.2, y, w: 3.0, h: 0.9, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.5 } })
+          sl.addText('ENEL STANCE', { x: 0.3, y: y + 0.08, w: 2.8, h: 0.2, fontSize: 6, bold: true, color: '4b5d80', fontFace: 'Calibri', charSpacing: 1 })
+          sl.addText(sd.stance || '', { x: 0.3, y: y + 0.3, w: 2.8, h: 0.3, fontSize: 12, bold: true, color: '93c5fd', fontFace: 'Calibri' })
+          // Rationale
+          sl.addText((sd.rationale || '').replace(/\*\*/g, ''), { x: 3.35, y, w: 9.7, h: 0.9, fontSize: 8.5, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+          y += 1.0
+          // Arguments
+          sl.addText('KEY ARGUMENTS', { x: 0.2, y, w: 12.9, h: 0.22, fontSize: 7, bold: true, color: '93c5fd', fontFace: 'Calibri', charSpacing: 1 })
+          y += 0.24
+          const args = sd.arguments || []
+          const argH = Math.min(0.5, (3.2) / Math.max(args.length, 1))
+          args.forEach((arg, ai) => {
+            sl.addShape(pptx.ShapeType.ellipse, { x: 0.22, y: y + ai * argH + 0.07, w: 0.06, h: 0.06, fill: { color: '3b82f6' } })
+            sl.addText(arg.replace(/\*\*/g, ''), { x: 0.34, y: y + ai * argH, w: 12.6, h: argH, fontSize: 8.5, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+          })
+          y += args.length * argH + 0.2
+          // Stakeholders
+          if ((sd.stakeholders || []).length) {
+            sl.addText('TARGET STAKEHOLDERS', { x: 0.2, y, w: 12.9, h: 0.22, fontSize: 7, bold: true, color: '6ee7b7', fontFace: 'Calibri', charSpacing: 1 })
+            y += 0.24
+            const stks = sd.stakeholders || []
+            const stkH = Math.min(0.55, (7.0 - y) / Math.max(stks.length, 1))
+            stks.forEach((stk, si) => {
+              sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + si * stkH, w: 12.9, h: stkH - 0.04, fill: { color: '0a1a12' }, line: { color: '064e3b', width: 0.4 } })
+              sl.addText(stk.target || '', { x: 0.3, y: y + si * stkH + 0.06, w: 2.8, h: 0.26, fontSize: 8, bold: true, color: '6ee7b7', fontFace: 'Calibri' })
+              sl.addText(stk.channel || '', { x: 3.2, y: y + si * stkH + 0.06, w: 2.5, h: 0.26, fontSize: 7.5, color: '7da8d4', fontFace: 'Calibri', italic: true })
+              sl.addText((stk.message || '').replace(/\*\*/g, ''), { x: 5.8, y: y + si * stkH + 0.06, w: 7.1, h: stkH - 0.1, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true })
+            })
+          }
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
+
+        // ── Slide 6: Compliance Calendar ──────────────────────────────────────
+        else if (type === 'compliance_calendar') {
+          addHeader(sl, slideNum, 'f43f5e')
+          let y = addSlideTitle(sl, sd.title || 'Compliance & Operational Calendar', 'f43f5e')
+          // Column headers
+          sl.addShape(pptx.ShapeType.rect, { x: 0.2, y, w: 12.9, h: 0.28, fill: { color: '1a0a12' }, line: { color: '7f1d2e', width: 0.4 } })
+          ;[['DATE', 0.2, 1.6], ['OBLIGATION', 1.85, 4.8], ['APPLIES TO', 6.7, 2.2], ['ENEL ACTION REQUIRED', 8.95, 4.1]].forEach(([label, x, w]) => {
+            sl.addText(label, { x, y: y + 0.04, w, h: 0.2, fontSize: 6, bold: true, color: 'fca5a5', fontFace: 'Calibri', charSpacing: 0.8 })
+          })
+          y += 0.3
+          const milestones = sd.milestones || []
+          const rowH = Math.min((7.0 - y) / Math.max(milestones.length, 1), 0.8)
+          milestones.forEach((ms, mi) => {
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + mi * rowH, w: 12.9, h: rowH - 0.04, fill: { color: mi % 2 === 0 ? '0d1629' : '0a0f1e' }, line: { color: '1e2d4a', width: 0.3 } })
+            sl.addText(ms.date || '', { x: 0.25, y: y + mi * rowH + 0.06, w: 1.55, h: rowH - 0.1, fontSize: 8, bold: true, color: 'fcd34d', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+            sl.addText((ms.obligation || '').replace(/\*\*/g, ''), { x: 1.9, y: y + mi * rowH + 0.06, w: 4.7, h: rowH - 0.1, fontSize: 8, color: 'e2e8f0', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+            sl.addText(ms.applies_to || '', { x: 6.7, y: y + mi * rowH + 0.06, w: 2.1, h: rowH - 0.1, fontSize: 7.5, color: '7da8d4', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+            sl.addText((ms.enel_action || '').replace(/\*\*/g, ''), { x: 8.95, y: y + mi * rowH + 0.06, w: 4.0, h: rowH - 0.1, fontSize: 8, color: '6ee7b7', fontFace: 'Calibri', wrap: true, valign: 'middle' })
+          })
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
+
+        // ── Slide 7: Open Questions ────────────────────────────────────────────
+        else if (type === 'open_questions') {
+          addHeader(sl, slideNum, '0ea5e9')
+          let y = addSlideTitle(sl, sd.title || 'Open Questions & Monitoring', '0ea5e9')
+          const questions = sd.questions || []
+          const qH = Math.min(0.9, 3.8 / Math.max(questions.length, 1))
+          questions.forEach((q, qi) => {
+            sl.addShape(pptx.ShapeType.rect, { x: 0.2, y: y + qi * qH, w: 12.9, h: qH - 0.05, fill: { color: '0d1629' }, line: { color: '1e2d4a', width: 0.4 } })
+            sl.addText(q.provision || '', { x: 0.3, y: y + qi * qH + 0.06, w: 2.5, h: 0.22, fontSize: 7.5, bold: true, color: '38bdf8', fontFace: 'Calibri' })
+            sl.addText((q.question || '').replace(/\*\*/g, ''), { x: 2.9, y: y + qi * qH + 0.06, w: 7.2, h: qH - 0.12, fontSize: 8, color: 'b0c4e4', fontFace: 'Calibri', wrap: true, valign: 'top' })
+            sl.addText('Risk: ' + (q.risk || ''), { x: 10.15, y: y + qi * qH + 0.06, w: 2.8, h: qH * 0.5, fontSize: 7, color: 'fca5a5', fontFace: 'Calibri', wrap: true })
+            sl.addText('Owner: ' + (q.owner || ''), { x: 10.15, y: y + qi * qH + qH * 0.5, w: 2.8, h: qH * 0.45, fontSize: 7, color: '6ee7b7', fontFace: 'Calibri', wrap: true })
+          })
+          y += questions.length * qH + 0.2
+          if ((sd.monitoring_points || []).length) {
+            sl.addText('MONITORING POINTS', { x: 0.2, y, w: 12.9, h: 0.22, fontSize: 7, bold: true, color: '38bdf8', fontFace: 'Calibri', charSpacing: 1 })
+            y += 0.25
+            ;(sd.monitoring_points || []).forEach((pt, pi) => {
+              sl.addShape(pptx.ShapeType.ellipse, { x: 0.22, y: y + pi * 0.38 + 0.08, w: 0.06, h: 0.06, fill: { color: '0ea5e9' } })
+              sl.addText(pt.replace(/\*\*/g, ''), { x: 0.34, y: y + pi * 0.38, w: 12.7, h: 0.38, fontSize: 8.5, color: 'b0c4e4', fontFace: 'Calibri', wrap: true })
+            })
+          }
+          addFooter(sl, slideNum, sd.footer_note, null, null)
+        }
       })
 
       await pptx.writeFile({ fileName: `enel-briefing-${doc.celex || workId.slice(0, 8)}.pptx` })

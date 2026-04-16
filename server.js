@@ -354,7 +354,7 @@ app.post('/api/slide-content', async (req, res) => {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1200,
+          max_tokens: 6000,
           temperature: 0.2,
           messages: [
             { role: 'system', content: PPTX_SYSTEM_PROMPT },
