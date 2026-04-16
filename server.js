@@ -27,7 +27,7 @@ app.use(express.text({ type: 'application/x-www-form-urlencoded' }))
 app.post('/api/sparql', async (req, res) => {
   try {
     const body = typeof req.body === 'string' ? req.body : new URLSearchParams(req.body).toString()
-    const upstream = await fetch('http://publications.europa.eu/webapi/rdf/sparql', {
+    const upstream = await fetch('https://publications.europa.eu/webapi/rdf/sparql', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -144,45 +144,42 @@ async function fetchManifest(abs, headers) {
 }
 
 async function fetchLegislativeFullText(workId, celex, lang = 'ENG') {
-  // Map lang code to Accept-Language and EUR-Lex path segment
+  // Map lang code to Accept-Language header value
   const LANG_MAP = {
-    ITA: { acceptLang: 'it,it-IT;q=0.9,en;q=0.5', eurLexLang: 'IT' },
-    ENG: { acceptLang: 'en,en-GB;q=0.9',           eurLexLang: 'EN' },
+    ITA: 'it,it-IT;q=0.9,en;q=0.5',
+    ENG: 'en,en-GB;q=0.9',
   }
-  const { acceptLang, eurLexLang } = LANG_MAP[lang] || LANG_MAP.ENG
+  const acceptLang = LANG_MAP[lang] || LANG_MAP.ENG
 
-  // ── Strategy 1: CELLAR proper content negotiation ─────────────────────────
-  // Send Accept: application/xhtml+xml + Accept-Language header to the CELLAR
-  // resource URI. CELLAR returns HTTP 303 See Other with a Location header
-  // pointing directly to the requested-language XHTML manifestation.
-  if (workId) {
-    const cellarBase = `https://publications.europa.eu/resource/cellar/${workId}`
+  // Helper: follows a CELLAR URI to its content. CELLAR sends HTTP 303 with a
+  // Location header (using http://). We upgrade it to https:// to avoid port-80
+  // issues on cloud providers, then fetch the actual document.
+  async function followCellarUri(uri) {
+    const httpsUri = uri.replace(/^http:\/\//, 'https://')
+    console.log(`[fulltext] CELLAR 303 probe → ${httpsUri}`)
     for (const acceptType of ['application/xhtml+xml', 'text/html', 'application/pdf']) {
       try {
-        console.log(`[fulltext] CELLAR 303 probe (${acceptType}, ${lang}) → ${cellarBase}`)
-        const probe = await fetch(cellarBase, {
+        const probe = await fetch(httpsUri, {
           method: 'GET',
-          headers: {
-            ...CELLAR_HEADERS,
-            'Accept': acceptType,
-            'Accept-Language': acceptLang,
-          },
+          headers: { ...CELLAR_HEADERS, Accept: acceptType, 'Accept-Language': acceptLang },
           signal: AbortSignal.timeout(15000),
-          redirect: 'manual',   // capture 303 Location without following blindly
+          redirect: 'manual',
         })
-        console.log(`[fulltext] CELLAR → ${probe.status}`)
+        console.log(`[fulltext] → ${probe.status} (${acceptType})`)
 
         let contentUrl = null
         if (probe.status === 303 || probe.status === 302 || probe.status === 301) {
           contentUrl = probe.headers.get('location')
-          console.log(`[fulltext] Location: ${contentUrl}`)
+          // Always upgrade http → https: Render (and most cloud providers) may block
+          // outbound port 80. CELLAR consistently sends http:// Location headers.
+          if (contentUrl) contentUrl = contentUrl.replace(/^http:\/\//, 'https://')
+          console.log(`[fulltext] Location (upgraded): ${contentUrl}`)
         } else if (probe.ok) {
-          // Occasionally returns content directly
           const ct = probe.headers.get('content-type') || ''
           const body = await probe.text()
           const text = (ct.includes('html') || body.trimStart().startsWith('<')) ? stripHtml(body) : body
           if (!isWafPage(text) && hasArticleContent(text)) {
-            console.log(`[fulltext] ✓ CELLAR direct ${text.length}ch`)
+            console.log(`[fulltext] ✓ direct body ${text.length}ch`)
             return text
           }
         }
@@ -190,14 +187,14 @@ async function fetchLegislativeFullText(workId, celex, lang = 'ENG') {
         if (contentUrl) {
           const docRes = await fetch(contentUrl, {
             headers: { ...CELLAR_HEADERS, 'Accept-Language': acceptLang },
-            signal: AbortSignal.timeout(25000),
+            signal: AbortSignal.timeout(30000),
             redirect: 'follow',
           })
           const ct = docRes.headers.get('content-type') || ''
-          console.log(`[fulltext] content → ${docRes.status} ${ct.slice(0, 40)}`)
+          console.log(`[fulltext] content fetch → ${docRes.status} ${ct.slice(0, 40)}`)
           if (!docRes.ok) continue
 
-          if (ct.includes('pdf') || contentUrl.toLowerCase().includes('pdf')) {
+          if (ct.includes('pdf') || contentUrl.toLowerCase().endsWith('.pdf')) {
             try {
               const buf = Buffer.from(await docRes.arrayBuffer())
               const parsed = await pdfParse(buf)
@@ -214,71 +211,41 @@ async function fetchLegislativeFullText(workId, celex, lang = 'ENG') {
               console.log(`[fulltext] ✓ CELLAR ${acceptType} ${text.length}ch`)
               return text
             }
-            console.log(`[fulltext] content has no article patterns (${text.length}ch) — trying next accept type`)
+            console.log(`[fulltext] no article patterns in ${text.length}ch — trying next accept type`)
           }
         }
       } catch (e) {
-        console.log(`[fulltext] CELLAR probe error (${acceptType}): ${e.message}`)
+        console.log(`[fulltext] probe error (${acceptType}): ${e.message}`)
       }
     }
-    console.log('[fulltext] CELLAR content negotiation exhausted — trying EUR-Lex')
+    return null
   }
 
-  // ── Strategy 2: EUR-Lex by CELLAR UUID ───────────────────────────────────
-  // EUR-Lex accepts ?uri=CELLAR:{uuid} and reliably serves the full text HTML
-  // for most document types including internal Commission acts.
+  // ── Strategy 1: CELLAR work URI (by CELLAR UUID) ──────────────────────────
+  // publications.europa.eu is NOT behind AWS WAF and reliably serves content
+  // to server-side requests. EUR-Lex is WAF-protected (JS challenge) so we
+  // NEVER fall through to it — it will never work from a server.
   if (workId) {
-    const eurLexByCellar = await fetchEurLexFullText(null, workId, eurLexLang)
-    if (eurLexByCellar) return eurLexByCellar
+    const text = await followCellarUri(`https://publications.europa.eu/resource/cellar/${workId}`)
+    if (text) return text
   }
 
-  // ── Strategy 3: EUR-Lex by CELEX number ──────────────────────────────────
+  // ── Strategy 2: CELLAR resource/celex URI (by CELEX number) ──────────────
+  // publications.europa.eu/resource/celex/{CELEX} also resolves via 303 to
+  // the manifestation — useful when we have CELEX but no UUID.
   if (celex) {
-    const eurLexByCelex = await fetchEurLexFullText(celex, null, eurLexLang)
-    if (eurLexByCelex) return eurLexByCelex
+    console.log(`[fulltext] trying CELLAR celex URI for ${celex}`)
+    const text = await followCellarUri(`https://publications.europa.eu/resource/celex/${celex}`)
+    if (text) return text
   }
 
-  console.log('[fulltext] all strategies exhausted — no content available')
-  return null
-}
+  // ── NOTE: EUR-Lex (eur-lex.europa.eu) is protected by AWS WAF ────────────
+  // Every server-side request returns HTTP 202 with a JavaScript challenge.
+  // Browser-rendered JS execution is required to pass the challenge — this is
+  // fundamentally impossible from Node.js fetch or curl. EUR-Lex fallbacks
+  // have been removed because they can never succeed from a server.
 
-// ── EUR-Lex direct fallback — fetches full text by CELEX number ───────────────
-// Used when CELLAR content negotiation returns no usable links.
-// EUR-Lex /TXT/HTML/ endpoint reliably returns the consolidated HTML text.
-async function fetchEurLexFullText(celex, cellarUuid, eurLang = 'EN') {
-  if (!celex && !cellarUuid) return null
-  const L = eurLang.toUpperCase()
-  const urls = [
-    // CELLAR UUID takes priority — works for Commission acts not indexed by CELEX
-    cellarUuid ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/HTML/?uri=CELLAR:${encodeURIComponent(cellarUuid)}` : null,
-    celex      ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`       : null,
-    cellarUuid ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/?uri=CELLAR:${encodeURIComponent(cellarUuid)}`      : null,
-    celex      ? `https://eur-lex.europa.eu/legal-content/${L}/TXT/?uri=CELEX:${encodeURIComponent(celex)}`            : null,
-  ].filter(Boolean)
-  for (const url of urls) {
-    try {
-      console.log(`[fulltext-eurlex] trying ${url}`)
-      const res = await fetch(url, {
-        headers: {
-          ...CELLAR_HEADERS,
-          Accept: 'text/html,application/xhtml+xml,*/*;q=0.9',
-          Referer: 'https://eur-lex.europa.eu/',
-        },
-        signal: AbortSignal.timeout(20000),
-        redirect: 'follow',
-      })
-      console.log(`[fulltext-eurlex] → ${res.status} ct=${(res.headers.get('content-type') || '').slice(0, 40)}`)
-      if (!res.ok) continue
-      const html = await res.text()
-      if (isWafPage(html)) { console.log('[fulltext-eurlex] → WAF page'); continue }
-      const text = stripHtml(html)
-      if (text.length < 300) { console.log(`[fulltext-eurlex] → too short (${text.length})`); continue }
-      console.log(`[fulltext-eurlex] ✓ ${text.length} chars`)
-      return text
-    } catch (e) {
-      console.log(`[fulltext-eurlex] error: ${e.message}`)
-    }
-  }
+  console.log('[fulltext] all CELLAR strategies exhausted — no content available')
   return null
 }
 
@@ -424,52 +391,50 @@ async function probeUrlForArticles(url, extraHeaders = {}) {
 }
 
 // ── Full-text availability probe ─────────────────────────────────────────────
-// Does a real partial GET (first 80 KB) and runs hasArticleContent — same
-// check as the summarize pipeline — so the result is trustworthy.
-// Returns { available: bool, source: 'CELLAR'|'EUR-Lex'|null }
+// Does a real partial GET (first 80 KB) via CELLAR and runs hasArticleContent.
+// NOTE: EUR-Lex (eur-lex.europa.eu) is behind AWS WAF and returns a JavaScript
+// challenge to all server requests — we only probe CELLAR (publications.europa.eu)
+// which is NOT WAF-protected and responds correctly from servers.
+// Returns { available: bool, source: 'CELLAR'|null }
 app.get('/api/fulltext-check', async (req, res) => {
   const { workId, celex } = req.query
   if (!workId && !celex) return res.json({ available: false, source: null })
 
-  // 1. CELLAR 303 → follow Location → partial GET + article check
-  if (workId) {
+  // Helper: probe a CELLAR URI by following the 303 redirect and checking content
+  async function probeCellarUri(uri) {
+    const httpsUri = uri.replace(/^http:\/\//, 'https://')
     try {
-      const probe = await fetch(`https://publications.europa.eu/resource/cellar/${workId}`, {
+      const probe = await fetch(httpsUri, {
         method: 'GET',
         headers: { ...CELLAR_HEADERS, Accept: 'application/xhtml+xml', 'Accept-Language': 'en,en-GB;q=0.9' },
         signal: AbortSignal.timeout(10000),
         redirect: 'manual',
       })
-      if (probe.status === 303 || probe.status === 302) {
-        const loc = probe.headers.get('location') || ''
+      if (probe.status === 303 || probe.status === 302 || probe.status === 301) {
+        const loc = (probe.headers.get('location') || '').replace(/^http:\/\//, 'https://')
         if (loc && !loc.includes('/rdf/object') && !loc.endsWith('.rdf')) {
           const ok = await probeUrlForArticles(loc)
-          if (ok) return res.json({ available: true, source: 'CELLAR' })
+          if (ok) return true
         }
       } else if (probe.ok) {
         const raw = await probe.text()
         const text = stripHtml(raw)
-        if (hasArticleContent(text)) return res.json({ available: true, source: 'CELLAR' })
+        if (hasArticleContent(text)) return true
       }
     } catch { /* continue */ }
+    return false
   }
 
-  // 2. EUR-Lex by CELLAR UUID
+  // 1. CELLAR work URI (by UUID)
   if (workId) {
-    const ok = await probeUrlForArticles(
-      `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELLAR:${encodeURIComponent(workId)}`,
-      { Referer: 'https://eur-lex.europa.eu/' }
-    )
-    if (ok) return res.json({ available: true, source: 'EUR-Lex' })
+    const ok = await probeCellarUri(`https://publications.europa.eu/resource/cellar/${workId}`)
+    if (ok) return res.json({ available: true, source: 'CELLAR' })
   }
 
-  // 3. EUR-Lex by CELEX
+  // 2. CELLAR resource/celex URI (by CELEX number)
   if (celex) {
-    const ok = await probeUrlForArticles(
-      `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${encodeURIComponent(celex)}`,
-      { Referer: 'https://eur-lex.europa.eu/' }
-    )
-    if (ok) return res.json({ available: true, source: 'EUR-Lex' })
+    const ok = await probeCellarUri(`https://publications.europa.eu/resource/celex/${celex}`)
+    if (ok) return res.json({ available: true, source: 'CELLAR' })
   }
 
   res.json({ available: false, source: null })
@@ -504,12 +469,9 @@ app.post('/api/summarize', async (req, res) => {
     // no client header forwarding needed). Fall back to client-provided text,
     // then abstract, then metadata-only.
     let fullText = null
-    if (workId) {
-      console.log(`[summarize] fetching full text for ${workId} (celex: ${celex || 'unknown'})`)
-      fullText = await fetchLegislativeFullText(workId, celex)
-    } else if (celex) {
-      console.log(`[summarize] no workId — trying EUR-Lex directly for ${celex}`)
-      fullText = await fetchEurLexFullText(celex, null)
+    if (workId || celex) {
+      console.log(`[summarize] fetching full text workId=${workId || 'none'} celex=${celex || 'none'}`)
+      fullText = await fetchLegislativeFullText(workId || null, celex || null)
     }
     if (!fullText && clientFullText) fullText = clientFullText
 
