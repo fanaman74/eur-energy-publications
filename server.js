@@ -2,7 +2,7 @@ import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 // Load .env if present (works without dotenv — manual parse)
 try {
@@ -249,49 +249,113 @@ async function fetchLegislativeFullText(workId, celex, lang = 'ENG') {
   return null
 }
 
-// ── ENEL Regulatory Briefing system prompt ────────────────────────────────────
-// Edit aisummary.md to change the prompt — no server restart needed if you
-// call /api/reload-prompt, or just restart the server after saving the file.
-let ENEL_SYSTEM_PROMPT = (() => {
-  try {
-    return readFileSync(new URL('./aisummary.md', import.meta.url), 'utf8').trim()
-  } catch {
-    console.warn('[prompt] aisummary.md not found — using empty fallback')
-    return ''
-  }
-})()
+// ── Analyst prompt files ──────────────────────────────────────────────────────
+// Three editable files power the AI analysis. All can be edited live via
+// GET/PUT /api/analyst-files and reloaded without a server restart.
+//
+//  eu-energy-reg-analyst.md   — Primary analysis skill (8-step framework)
+//  references/italy-market-baseline.md  — Standing Italy market context
+//  aisummary.md               — Legacy briefing note prompt (kept for compat)
+//  aipptx.md                  — PowerPoint slide generation instructions
 
-// Hot-reload endpoint: POST /api/reload-prompt to pick up aisummary.md changes
-// without restarting the server.
-app.post('/api/reload-prompt', (_req, res) => {
+function loadFile(relPath, fallback = '') {
   try {
-    ENEL_SYSTEM_PROMPT = readFileSync(new URL('./aisummary.md', import.meta.url), 'utf8').trim()
-    console.log(`[prompt] reloaded from aisummary.md (${ENEL_SYSTEM_PROMPT.length} chars)`)
-    res.json({ ok: true, chars: ENEL_SYSTEM_PROMPT.length })
+    return readFileSync(new URL(relPath, import.meta.url), 'utf8').trim()
+  } catch {
+    return fallback
+  }
+}
+
+function saveFile(relPath, content) {
+  const absPath = new URL(relPath, import.meta.url)
+  writeFileSync(absPath, content, 'utf8')
+}
+
+// The analyst skill inlines the Italy baseline where the skill references
+// the /mnt/... path — this way the AI has all context in one system prompt.
+function buildAnalystPrompt() {
+  const skill    = loadFile('./eu-energy-reg-analyst.md')
+  const baseline = loadFile('./references/italy-market-baseline.md')
+  if (!skill) return loadFile('./aisummary.md')  // graceful fallback
+  // Splice the baseline in where the skill says to draw on the reference file
+  const inlined = skill.replace(
+    /Draw on the reference file at `[^`]+italy-market-baseline\.md`[^.]*\./,
+    'The Italy market baseline is provided in full below — use it as the standing reference context for all Italy-specific analysis.'
+  )
+  return `${inlined}\n\n---\n\n## Italy Market Baseline (Standing Reference)\n\n${baseline}`
+}
+
+let ENEL_SYSTEM_PROMPT = buildAnalystPrompt()
+console.log(`[prompt] analyst prompt loaded: ${ENEL_SYSTEM_PROMPT.length} chars`)
+
+// ── Analyst file management API ───────────────────────────────────────────────
+const EDITABLE_FILES = {
+  'analyst-skill':    './eu-energy-reg-analyst.md',
+  'italy-baseline':   './references/italy-market-baseline.md',
+  'briefing-note':    './aisummary.md',
+  'slide-prompt':     './aipptx.md',
+}
+
+// GET /api/analyst-files — list all editable files with their content
+app.get('/api/analyst-files', (_req, res) => {
+  const files = {}
+  for (const [key, relPath] of Object.entries(EDITABLE_FILES)) {
+    const content = loadFile(relPath, null)
+    files[key] = {
+      key,
+      relPath,
+      content,
+      chars: content?.length ?? 0,
+      exists: content !== null,
+    }
+  }
+  res.json({ files, activePromptChars: ENEL_SYSTEM_PROMPT.length })
+})
+
+// GET /api/analyst-files/:key — get a single file's content
+app.get('/api/analyst-files/:key', (req, res) => {
+  const relPath = EDITABLE_FILES[req.params.key]
+  if (!relPath) return res.status(404).json({ error: 'Unknown file key' })
+  const content = loadFile(relPath, null)
+  if (content === null) return res.status(404).json({ error: 'File not found on disk' })
+  res.json({ key: req.params.key, relPath, content, chars: content.length })
+})
+
+// PUT /api/analyst-files/:key — save a file and hot-reload the active prompt
+app.put('/api/analyst-files/:key', (req, res) => {
+  const relPath = EDITABLE_FILES[req.params.key]
+  if (!relPath) return res.status(404).json({ error: 'Unknown file key' })
+  const { content } = req.body
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' })
+  try {
+    saveFile(relPath, content)
+    // Rebuild the active analyst prompt if analyst-skill or italy-baseline changed
+    if (req.params.key === 'analyst-skill' || req.params.key === 'italy-baseline') {
+      ENEL_SYSTEM_PROMPT = buildAnalystPrompt()
+      console.log(`[prompt] rebuilt after ${req.params.key} edit: ${ENEL_SYSTEM_PROMPT.length} chars`)
+    }
+    res.json({ ok: true, key: req.params.key, chars: content.length })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
 
+// POST /api/reload-prompt — legacy compat: reload all prompt files
+app.post('/api/reload-prompt', (_req, res) => {
+  ENEL_SYSTEM_PROMPT = buildAnalystPrompt()
+  console.log(`[prompt] reloaded: ${ENEL_SYSTEM_PROMPT.length} chars`)
+  res.json({ ok: true, chars: ENEL_SYSTEM_PROMPT.length })
+})
+
 // ── PPTX slide content prompt ─────────────────────────────────────────────────
 // Edit aipptx.md to change how the AI structures slide content.
-let PPTX_SYSTEM_PROMPT = (() => {
-  try {
-    return readFileSync(new URL('./aipptx.md', import.meta.url), 'utf8').trim()
-  } catch {
-    console.warn('[pptx-prompt] aipptx.md not found — using empty fallback')
-    return ''
-  }
-})()
+// Also editable live via PUT /api/analyst-files/slide-prompt
+let PPTX_SYSTEM_PROMPT = loadFile('./aipptx.md')
 
 app.post('/api/reload-pptx-prompt', (_req, res) => {
-  try {
-    PPTX_SYSTEM_PROMPT = readFileSync(new URL('./aipptx.md', import.meta.url), 'utf8').trim()
-    console.log(`[pptx-prompt] reloaded from aipptx.md (${PPTX_SYSTEM_PROMPT.length} chars)`)
-    res.json({ ok: true, chars: PPTX_SYSTEM_PROMPT.length })
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
+  PPTX_SYSTEM_PROMPT = loadFile('./aipptx.md')
+  console.log(`[pptx-prompt] reloaded: ${PPTX_SYSTEM_PROMPT.length} chars`)
+  res.json({ ok: true, chars: PPTX_SYSTEM_PROMPT.length })
 })
 
 // ── AI slide content endpoint ─────────────────────────────────────────────────

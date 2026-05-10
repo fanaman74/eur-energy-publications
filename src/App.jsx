@@ -11,6 +11,7 @@ import Remit from './pages/Remit'
 import EurLex from './pages/EurLex'
 import LegislationDetail from './pages/LegislationDetail'
 import FullTextReader from './pages/FullTextReader'
+import AnalystSettings from './pages/AnalystSettings'
 import InteractiveMap from './pages/InteractiveMap'
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
                 <Route path="/eur-lex/:workId/text/:lang" element={<FullTextReader />} />
                 <Route path="/map" element={<InteractiveMap />} />
                 <Route path="/about" element={<About />} />
+                <Route path="/settings" element={<AnalystSettings />} />
               </Routes>
             </main>
             <Footer />
